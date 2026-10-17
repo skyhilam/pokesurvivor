@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>PokéSurvivor Jev Bot</title>
+  <style>
+    body {
+      width: 280px;
+      margin: 0;
+      padding: 14px;
+      background: #0a1430;
+      color: #e0e8f8;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      color: #ffd25e;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 210, 94, 0.2);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 12px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .row:last-child {
+      margin-bottom: 0;
+    }
+    .val-good { color: #5fe08a; font-weight: 600; }
+    .val-warn { color: #ff9ed8; font-weight: 600; }
+    .btn {
+      width: 100%;
+      background: #ffd25e;
+      color: #121829;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 5px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 13px;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .note {
+      font-size: 11px;
+      color: #8fa3c4;
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <h2>⚡ PokéSurvivor Jev Bot</h2>
+  
+  <div class="status-card">
+    <div class="row">
+      <span>Jev Bridge:</span>
+      <span id="bridge-status" class="val-warn">Checking...</span>
+    </div>
+    <div class="row">
+      <span>TypeSafe Key:</span>
+      <span id="key-status">-</span>
+    </div>
+    <div class="row">
+      <span>Model:</span>
+      <span id="model-name">jev-latest</span>
+    </div>
+    <div class="row">
+      <span>Decisions Made:</span>
+      <span id="call-count">0</span>
+    </div>
+  </div>
+
+  <button id="open-game-btn" class="btn">Open PokéSurvivor (en)</button>
+
+  <p class="note">
+    • 60 FPS reflex evasion & hazard detection.<br>
+    • TypeSafe Jev systemone structured leveling.<br>
+    • Aiming for 31:00 (Elegido de Arceus).
+  </p>
+
+  <script src="popup.js"></script>
+</body>
+</html>

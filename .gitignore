@@ -1,0 +1,23 @@
+# Runtime data & experiment logs (kept local, never published)
+logs/
+# Source-derived archive (experiment integrity: never publish)
+archive/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Secrets & credentials (API key lives outside the repo:
+# env TYPESAFE_API_KEY or ~/.config/typesafe/api_key)
+.env
+.env.*
+*.pem
+*.key
+api_key
+
+# OS / editor noise
+.DS_Store
+*.pid
+*.log
