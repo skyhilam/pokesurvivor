@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -20,10 +21,10 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from learning import LearningEngine, canonical_card_key  # noqa: E402
+from learning import LearningEngine, canonical_card_key, combo_pair_index  # noqa: E402
 from opportunity import WorldModel  # noqa: E402
 from auto_iteration import AutoIterSupervisor  # noqa: E402
-from journal import Journal  # noqa: E402
+from journal import Journal, bridge_build  # noqa: E402
 
 PORT = int(os.environ.get("JEV_BRIDGE_PORT", "8765"))
 API_URL = "https://api.typesafe.ai/v1/systemone"
@@ -112,7 +113,7 @@ ENGINE.journal.seed()
 ENGINE.journal.mine_card_rules()
 _np = ENGINE.journal.data.get("next_plan") or {}
 if not _np or (_np.get("focus_question") and _np["focus_question"] not in ENGINE.journal.data["questions"]) \
-        or str(_np.get("build_id", "")).startswith("test_"):
+        or str(_np.get("build_id", "")).startswith("test_") or _np.get("bridge_build") != bridge_build():
     ENGINE.journal.plan_next(use_jev=True)
 ENGINE.journal.save()
 ENGINE.journal.write_markdown()
@@ -121,6 +122,15 @@ AUTO_ITER = AutoIterSupervisor(LOG_DIR)
 
 def _card_key(c: dict[str, Any]) -> str:
     return canonical_card_key(c)
+
+
+def expected_bot_build() -> str:
+    try:
+        js_path = Path(__file__).resolve().parent.parent / "extension" / "page_agent.js"
+        m = re.search(r'const\s+BOT_BUILD\s*=\s*"([^"]+)"', js_path.read_text(encoding="utf-8"))
+        return m.group(1) if m else ""
+    except Exception:
+        return ""
 
 
 def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
@@ -138,8 +148,9 @@ def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
         return dec
 
     my_moves = player.get("moves") or []
-    unevolved_ids = {str(m.get("id") or "").lower(): int(m.get("lvl") or 1) for m in my_moves if not m.get("evo")}
-    unevolved_names = {str(m.get("name") or "").lower(): str(m.get("id") or "").lower() for m in my_moves if not m.get("evo")}
+    in_run_buffs = {str(m.get("id") or "").lower() for m in my_moves if m.get("role") == "0-damage support buff"}
+    unevolved_ids = {str(m.get("id") or "").lower(): int(m.get("lvl") or 1) for m in my_moves if not (m.get("evolved") or m.get("evo"))}
+    unevolved_names = {str(m.get("name") or "").lower(): str(m.get("id") or "").lower() for m in my_moves if not (m.get("evolved") or m.get("evo"))}
     picked_keys = set(data.get("picked_keys") or [])
     if not picked_keys:
         for t in (data.get("picked_titles") or []):
@@ -158,6 +169,14 @@ def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
             hint_slug = re.sub(r"[^a-z0-9]+", "-", hint.lower()).strip("-")
             if hint_slug in unevolved_ids or hint.lower() in unevolved_names:
                 return done({"action": "pick", "index": i, "card": c.get("title"), "source": "on_screen_evolves_hint"})
+
+    # 3. A SUPPORTED combo my journal mined from my own runs can be completed by a card
+    # on screen right now: take it (as advice alone, my history took it only ~1/3 of the time).
+    if ENGINE.journal:
+        supported_conds = [b.get("cond") or {} for b in ENGINE.journal.card_rules(only_supported=True)]
+        combo_i = combo_pair_index(cards, unevolved_ids, picked_keys, supported_conds)
+        if combo_i is not None:
+            return done({"action": "pick", "index": combo_i, "card": cards[combo_i].get("title"), "source": "learned_combo_pair"})
 
     criteria = {f"card_{i}": f"{c.get('title')} | {c.get('desc', '')} | my experience: {ENGINE.card_hint(canonical_card_key(c))}"
                 for i, c in enumerate(cards)}
@@ -178,6 +197,7 @@ def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
         "my_lessons": ENGINE.top_lessons(6),
     }
     discovered_pairs: dict[str, str] = {}
+    required_n: dict[str, int] = {}
     if ENGINE.journal:
         plan = ENGINE.journal.data.get("next_plan") or {}
         prefer = set(plan.get("prefer") or [])
@@ -188,8 +208,11 @@ def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
             if b.get("status") in ("supported", "testing"):
                 cond = b.get("cond") or {}
                 after_k = str(cond.get("after") or "")
-                if after_k.startswith("up:") and cond.get("paired_with"):
-                    discovered_pairs[after_k.split(":", 1)[1]] = str(cond["paired_with"])
+                if after_k.startswith("up:"):
+                    m_slug = after_k.split(":", 1)[1]
+                    required_n[m_slug] = int(cond.get("n") or 4)
+                    if cond.get("paired_with"):
+                        discovered_pairs[m_slug] = str(cond["paired_with"])
         for i, c in enumerate(cards):
             ckey = canonical_card_key(c)
             if c.get("key") in prefer or ckey in prefer:
@@ -197,12 +220,26 @@ def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
                     criteria[f"card_{i}"] += " | (already picked this stat once this run; prioritise levelling moves to trigger evolution)"
                 else:
                     criteria[f"card_{i}"] += " | MY PLAN FOR THIS RUN WANTS THIS CARD"
+
+    # Identify highest-level un-evolved damaging attack that still needs upgrades toward evolution
+    damaging_unevolved = {
+        m_id: lvl for m_id, lvl in unevolved_ids.items()
+        if m_id not in in_run_buffs and not ENGINE.is_zero_dmg_move(m_id) and (lvl - 1) < required_n.get(m_id, 4)
+    }
+    focus_evo_move = max(damaging_unevolved, key=lambda m: (damaging_unevolved[m], ENGINE.card_value(f"up:{m}")[0])) if damaging_unevolved else None
+
     for i, c in enumerate(cards):
         ckey = canonical_card_key(c)
         if ckey.startswith("up:"):
             m_id = ckey.split(":", 1)[1]
-            if m_id in unevolved_ids and not ENGINE.is_zero_dmg_move(m_id):
-                criteria[f"card_{i}"] += f" | UPGRADES MY EQUIPPED ATTACK (now Lv.{unevolved_ids[m_id]}) TOWARD EVOLUTION"
+            if m_id in in_run_buffs or ENGINE.is_zero_dmg_move(m_id):
+                criteria[f"card_{i}"] += " | (0-damage support buff — do not prioritise over damaging attacks)"
+            elif m_id in unevolved_ids:
+                lvl = unevolved_ids[m_id]
+                if m_id == focus_evo_move and lvl >= 2:
+                    criteria[f"card_{i}"] += f" | TOP PRIORITY: FINISH UPGRADING MY MAIN ATTACK (now Lv.{lvl}) TO TRIGGER EVOLUTION!"
+                else:
+                    criteria[f"card_{i}"] += f" | UPGRADES MY EQUIPPED ATTACK (now Lv.{lvl}) TOWARD EVOLUTION"
         elif ckey.startswith("stat:") and ckey not in picked_keys:
             for m_id in unevolved_ids:
                 if discovered_pairs.get(m_id) == ckey:
@@ -218,7 +255,7 @@ def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
 
     instructions = ("Choose the card that will make me strongest, judging only from the card text, my plan for this run, "
                     "my beliefs and hunches, and what I have observed after picking cards before. "
-                    "Prioritise upgrading equipped damaging moves toward evolution and picking their paired stat once.")
+                    "Focus on finishing one damaging move's upgrades to trigger its evolution before spreading upgrades thin across other moves, and pick its paired stat once.")
     if need_early_attack:
         instructions += " [EARLY SURVIVAL: I have only 1 damaging attack. I urgently need a 2nd damaging attack to survive early enemy swarms before picking utility stats.]"
 
@@ -240,10 +277,12 @@ def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
         val, seen_n, _, _ = ENGINE.card_value(ckey)
         bonus = 15.0 if seen_n == 0 else 0.0
         m_id = ckey.split(":", 1)[1] if ":" in ckey else ckey
+        if m_id in in_run_buffs or ENGINE.is_zero_dmg_move(m_id):
+            bonus -= 25.0
         if need_early_attack and (ckey.startswith("new:") or cards[i].get("type") == "new") and not ENGINE.is_zero_dmg_move(m_id):
             bonus += 50.0
-        if ckey.startswith("up:") and m_id in unevolved_ids and not ENGINE.is_zero_dmg_move(m_id):
-            bonus += 45.0
+        if ckey.startswith("up:") and m_id in unevolved_ids and m_id not in in_run_buffs and not ENGINE.is_zero_dmg_move(m_id):
+            bonus += 40.0 + 12.0 * unevolved_ids[m_id]
         if ckey.startswith("stat:"):
             if ckey in picked_keys:
                 bonus -= 20.0
@@ -342,6 +381,7 @@ def handle_run_start(data: dict[str, Any]) -> dict[str, Any]:
     with ENGINE_LOCK:
         res = ENGINE.start_run(data)
         res["world_model"] = OPP.snapshot()
+        res["expected_bot_build"] = expected_bot_build()
     log_decision({"event": "run_start", **res})
     print(f"[Learning] ▶ Run #{res['run_number']} experiment={res['experiment']} ({res['source']}) :: {res['hypothesis']}")
     return res
@@ -359,7 +399,8 @@ def handle_run_end(data: dict[str, Any]) -> dict[str, Any]:
     with ENGINE_LOCK:
         if persist and ENGINE.is_duplicate(data):
             res = {"status": "duplicate", "run": None, "lesson": "duplicate run ignored (already recorded)",
-                   "decision": "duplicate", "verdict": "n/a", "diagnosis": "n/a", "source": "dedupe"}
+                   "decision": "duplicate", "verdict": "n/a", "diagnosis": "n/a", "source": "dedupe",
+                   "expected_bot_build": expected_bot_build()}
             log_decision({"event": "run_end_duplicate", "run_id": data.get("run_id"), "time": data.get("time")})
             print(f"[Learning] ⨯ duplicate run ignored (run_id={data.get('run_id')}, t={data.get('time')})")
             return res
@@ -372,6 +413,7 @@ def handle_run_end(data: dict[str, Any]) -> dict[str, Any]:
             AUTO_ITER.audit_and_tune(ENGINE.kb, ENGINE)
             ENGINE.save()
         res["world_model"] = OPP.snapshot()
+        res["expected_bot_build"] = expected_bot_build()
     log_decision({"event": "run_end", "dry_run": not persist, **{k: res.get(k) for k in
                   ("run", "lesson", "decision", "verdict", "diagnosis", "source", "focus_verdict", "new_questions", "next_plan")}})
     print(f"[Learning] ■ {res['lesson']}")
@@ -443,6 +485,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/health":
             self._reply({"status": "ok", "typesafe_key_present": bool(API_KEY), "model": DEFAULT_MODEL,
+                         "expected_bot_build": expected_bot_build(),
                          "stats": STATS, "total_runs": ENGINE.kb["total_runs"], "best_time": ENGINE.kb["best_time"]})
         elif self.path in ("/memory", "/knowledge"):
             self._reply(ENGINE.summary())

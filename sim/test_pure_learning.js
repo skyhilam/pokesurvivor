@@ -177,5 +177,84 @@ function report(name, dmgs, cond) {
   report("starts leaving a big circle early enough to clear its edge", dmgs, dmgs[0] > 0 && dmgs[5] === 0);
 }
 
+// H) a big circle while a pack closes in: escaping means crossing the pack (contact hurts),
+// but the burst (60) is far worse than brushing past them. Late-run data: marking damage is
+// concentrated in the crowded final phase, so this is the case that actually kills.
+{
+  const world = { enemies: [], hazards: [], pickups: [] };
+  const bot = makeBot(world); bot.world = world;
+  const dmgs = [];
+  for (let ep = 0; ep < 8; ep++) {
+    dmgs.push(episode(bot, (w) => {
+      const hz = { kind: "zone", x: 0, y: 0, r: 150, delay: 1.5, t: 0, hit: false };
+      w.hazards = [hz];
+      w.pickups = [{ x: 0, y: 0, kind: "xp" }];
+      w.enemies = [];
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * 2 * Math.PI;
+        w.enemies.push({ x: Math.cos(a) * 120, y: Math.sin(a) * 120, r: 12, name: "Rattata" });
+      }
+      w.step = (p, dt, hurt) => {
+        for (const e of w.enemies) {
+          const d = Math.hypot(p.x - e.x, p.y - e.y) || 1;
+          e.x += ((p.x - e.x) / d) * 70 * dt; e.y += ((p.y - e.y) / d) * 70 * dt;
+          if (d < e.r + p.r) hurt(30 * dt);
+        }
+        if (!hz.hit) {
+          hz.t += dt;
+          if (hz.t >= hz.delay) { hz.hit = true; if (Math.hypot(p.x - hz.x, p.y - hz.y) < hz.r + 0.6 * p.r) hurt(60); }
+        }
+      };
+    }, 2.2));
+  }
+  report("escapes a crowded big circle before the burst (contact only, no burst)", dmgs, dmgs[0] > 60 && dmgs[7] < 60);
+}
+
+// I) pickup economics: with measured gains in memory (heal +HP, xp +XP), a badly
+// hurt bot must head for the heal even when XP is closer; at full HP the heal loses.
+// Guards the flat value floor that once made every pickup kind worth the same.
+{
+  const world = { enemies: [], hazards: [], pickups: [] };
+  const bot = makeBot(world); bot.world = world;
+  bot.learned.pickups["pickup:heal"] = { n: 20, sum: { hp: 1.36 } };        // measured: +6.8% HP each
+  bot.learned.pickups["pickup:xp"] = { n: 20, sum: { xp: 0.14, level: 0.16 } };
+  const player = { x: 0, y: 0, r: 14, hp: 100, maxHp: 100 };
+  bot.damageTracker.lastHp = 0;
+  bot.motion.speed = 110;
+  world.pickups = [{ x: 160, y: 0, kind: "heal" }, { x: -90, y: 0, kind: "xp" }];
+  bot.tick(16);
+  bot.trackDamage(player);
+  const [vxFull] = bot.computeOptimalVelocity(player);
+  player.hp = 30;
+  bot.trackDamage(player);
+  const [vxHurt] = bot.computeOptimalVelocity(player);
+  report("hurt bot heads for the measured heal over closer XP", [0], vxHurt > 0.5 && vxFull < 0);
+  console.log(`      full-HP vx=${vxFull.toFixed(2)} (toward xp), hurt vx=${vxHurt.toFixed(2)} (toward heal)`);
+}
+
+// J) a fast-fuse line beam (delay 0.50s <= 0.60s horizon) aimed across me while XP sits ahead:
+// costAt must evaluate my position at tLeft (0.50s), not after I would have crossed the beam at 0.60s.
+{
+  const world = { enemies: [], hazards: [], pickups: [] };
+  const bot = makeBot(world); bot.world = world;
+  const dmgs = [];
+  for (let ep = 0; ep < 6; ep++) {
+    dmgs.push(episode(bot, (w) => {
+      const hz = { kind: "line", x: -120, y: 0, angle: 0, len: 360, w: 28, delay: 0.50, t: 0, hit: false };
+      w.hazards = [hz];
+      w.pickups = [{ x: 60, y: 0, kind: "xp" }];
+      w.step = (p, dt, hurt) => {
+        if (hz.hit) return;
+        hz.t += dt;
+        if (hz.t >= hz.delay) {
+          hz.hit = true;
+          if (Math.abs(p.y - hz.y) < hz.w / 2 + 0.6 * p.r) hurt(35);
+        }
+      };
+    }, 1.0));
+  }
+  report("dodges a fast-fuse line marking (delay <= 0.6s) before it fires", dmgs, dmgs[0] > 0 && dmgs[5] === 0);
+}
+
 console.log(ok ? "\nALL PASS" : "\nSOME FAILED");
 process.exit(ok ? 0 : 1);

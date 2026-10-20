@@ -112,6 +112,32 @@ def canonical_card_key(card: dict[str, Any]) -> str:
     return key or f"card:{slug(title)}"
 
 
+def combo_pair_index(cards: list[dict[str, Any]], unevolved_ids: dict[str, int],
+                     picked_keys: set[str], rule_conds: list[dict[str, Any]]) -> int | None:
+    """Index of the paired stat card that completes a mined combo, else None.
+
+    A mined rule says: after I upgraded move X n times and picked stat S once,
+    a special card for X showed up. When X is equipped and un-evolved, has been
+    upgraded at least n times (lvl - 1, as shown on screen), S is not picked yet
+    this run, and S is one of the cards on screen, that card finishes the combo.
+    Rules come only from my own run history comparisons (journal.mine_card_rules).
+    """
+    for cond in rule_conds:
+        after_k = str(cond.get("after") or "")
+        paired = str(cond.get("paired_with") or "")
+        if not (after_k.startswith("up:") and paired.startswith("stat:")):
+            continue
+        m_id = after_k.split(":", 1)[1]
+        if m_id not in unevolved_ids or paired in picked_keys:
+            continue
+        if unevolved_ids[m_id] - 1 < int(cond.get("n") or 0):
+            continue
+        for i, c in enumerate(cards):
+            if canonical_card_key(c) == paired:
+                return i
+    return None
+
+
 def compute_power_score(t: float, level: int, kills: int, timeline: list[dict[str, Any]], boss_kills: int = 0) -> tuple[float, float, float]:
     """
     Active combat progress score:

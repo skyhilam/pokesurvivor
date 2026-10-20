@@ -268,7 +268,7 @@ class Journal:
         n_open = sum(1 for q in self.data["questions"].values() if q["kind"] == "partner" and q["status"] != "answered")
         cands = sorted([o for o in ms.get("owned") or [] if o.get("name") and o["name"] not in used
                         and not self.has_topic(f"partner:{o.get('dex')}")],
-                       key=lambda o: (-(o.get("rarity") or 0), -((o.get("atk") or 0) + (o.get("hp") or 0) + (o.get("spd") or 0)), random.random()))
+                       key=lambda o: (-(o.get("rarity") or 0), -((float(o.get("atk") or 0) * 100) + float(o.get("hp") or 0) + float(o.get("spd") or 0)), random.random()))
         for o in cands[:max(0, 3 - n_open)]:
             self.add_question(f"What is it like to play as {o['name']}?", f"partner:{o.get('dex')}", "partner", 0.8,
                               origin=f"I own it but never played it ({len(cands)} untried partners)")
@@ -432,17 +432,24 @@ class Journal:
                 base_k = best["after"]
                 base_n = best["n"]
                 base_move = base_k.split(":", 1)[1] if ":" in base_k else base_k
-                for k2 in {k for c in pos for k in c if k != base_k and k != f"new:{base_move}" and not k.startswith("evo:")}:
+                stat_cands = []
+                for k2 in {k for c in pos for k in c if k.startswith("stat:") and k != base_k and k != f"new:{base_move}"}:
                     met2 = [c for c in pos + neg if c.get(base_k, 0) >= base_n and c.get(k2, 0) >= 1]
                     if not met2 or len(met2) < len(pos) * 0.5:
                         continue
                     nec2 = sum(1 for c in pos if c.get(base_k, 0) >= base_n and c.get(k2, 0) >= 1) / len(pos)
                     rel2 = sum(1 for c in met2 if any(c is p for p in pos)) / len(met2)
                     score2 = nec2 * (rel2 ** 0.5)
-                    if (rel2 > best["reliable"] + 0.08 or (rel2 >= 0.90 and nec2 >= 0.90)) and (not best_pair or score2 > best_pair["score"]):
+                    stat_cands.append((score2, nec2, rel2, len(met2), k2))
+                stat_cands.sort(reverse=True)
+                if stat_cands:
+                    score2, nec2, rel2, met2_n, k2 = stat_cands[0]
+                    second_score = stat_cands[1][0] if len(stat_cands) > 1 else 0.0
+                    clearly_distinct = (score2 - second_score) >= 0.12 or len(stat_cands) == 1
+                    if clearly_distinct and (rel2 > best["reliable"] + 0.04 or (nec2 >= 0.90 and rel2 >= 0.75 and len(pos) >= 3)):
                         best_pair = {"card": card, "after": base_k, "n": base_n, "paired_with": k2, "n2": 1,
                                      "necessary": round(nec2, 2), "reliable": round(rel2, 2),
-                                     "met_runs": len(met2), "shown_runs": len(pos), "score": round(score2, 3)}
+                                     "met_runs": met2_n, "shown_runs": len(pos), "score": round(score2, 3)}
                 rules.append(best_pair if best_pair else best)
         self._apply_card_rules(rules)
         return rules
@@ -757,22 +764,58 @@ class Journal:
             r["evo"] += sum(1 for m in (f.get("moves") or []) if m.get("evolved"))
         return recs
 
-    def _build_options(self) -> dict[str, dict[str, Any]]:
+    def _partner_offers(self, partner_name: Optional[str], runs: Optional[list[dict[str, Any]]] = None) -> tuple[set[str], set[str]]:
+        if not partner_name:
+            return set(), set()
+        partner_offers, other_offers = set(), set()
+        for f in (runs if runs is not None else self._recent_run_files(10_000)):
+            p_name = f.get("partner")
+            for p in f.get("picks") or []:
+                off = p.get("offered") or []
+                if p_name == partner_name:
+                    partner_offers.update(off)
+                elif p_name:
+                    other_offers.update(off)
+        return partner_offers, other_offers
+
+    def _build_options(self, partner_name: Optional[str] = None) -> dict[str, dict[str, Any]]:
         opts: dict[str, dict[str, Any]] = {"free": {"text": "no fixed build: pick whatever card looks strongest each time", "prefer": []}}
         kb = self.engine.kb
-        files = self._recent_run_files(12)
-        best_id = kb.get("best_run_id")
-        best = next((f for f in files if f.get("run_id") == best_id), None)
-        if best is None and best_id:
-            for p in self.engine.runs_dir.glob(f"run_*_{best_id}.json"):
-                try:
-                    best = json.loads(p.read_text(encoding="utf-8"))
-                except Exception:
-                    pass
+        all_runs = self._recent_run_files(10_000)
+        files = all_runs[-12:]
+        partner_offers, other_offers = self._partner_offers(partner_name, all_runs)
+        best = None
+        if partner_name and partner_offers:
+            p_runs = [f for f in all_runs if f.get("partner") == partner_name and f.get("picks")]
+            if p_runs:
+                best = max(p_runs, key=lambda f: float(f.get("power_score") or f.get("time") or 0))
+        if best is None:
+            best_id = kb.get("best_run_id")
+            best = next((f for f in all_runs if f.get("run_id") == best_id), None)
+            if best is None and best_id:
+                for p in self.engine.runs_dir.glob(f"run_*_{best_id}.json"):
+                    try:
+                        best = json.loads(p.read_text(encoding="utf-8"))
+                    except Exception:
+                        pass
         if best and best.get("picks"):
             keys = list(dict.fromkeys(p.get("key") for p in best["picks"] if p.get("key")))
-            opts["repeat_best"] = {"text": f"repeat the cards of my best run: {', '.join(_pretty(k) for k in keys[:6])}", "prefer": keys[:10]}
-        rules = sorted([b for b in self.card_rules() if b["status"] in ("supported", "testing")], key=lambda b: -b["confidence"])
+            if not partner_offers or not any((k in other_offers and k not in partner_offers) for k in keys if k.startswith(("up:", "new:", "evo:"))):
+                p_label = f" with {partner_name}" if partner_name and best.get("partner") == partner_name else ""
+                opts["repeat_best"] = {"text": f"repeat the cards of my best run{p_label}: {', '.join(_pretty(k) for k in keys[:6])}", "prefer": keys[:10]}
+        all_rules = [b for b in self.card_rules() if b["status"] in ("supported", "testing")]
+        if partner_offers:
+            compat_rules = [b for b in all_rules if not (b["cond"]["after"] in other_offers and b["cond"]["after"] not in partner_offers)]
+            if compat_rules:
+                all_rules = compat_rules
+        rules = sorted(
+            all_rules,
+            key=lambda b: (
+                0 if (not partner_offers or b["cond"]["after"] in partner_offers) else 1,
+                -b["confidence"],
+                -(self.engine.card_value(b["cond"]["card"])[0] + 0.5 * self.engine.card_value(b["cond"]["after"])[0]),
+            ),
+        )
         for b in rules[:6]:
             c = b["cond"]
             bid = next(k for k, x in self.data["beliefs"].items() if x is b)
@@ -824,7 +867,8 @@ class Journal:
         used = kb.get("partners") or {}
         last = kb["runs"][-1] if kb.get("runs") else None
         cur = next((o for o in owned if o.get("name") == (last or {}).get("partner")), None)
-        builds = self._build_options()
+        default_partner = (cur.get("name") if cur else None) or (last or {}).get("partner")
+        builds = self._build_options(default_partner)
         stats = self.data["stance_stats"]
         focus = opens[0][0] if opens else None
         partner_dex = cur.get("dex") if cur else None
@@ -854,20 +898,26 @@ class Journal:
                 qs["focus_question"] = {"type": "choice", "instructions": "Like a curious player: which ONE question do I most want to answer next run?",
                                         "criteria": {qid: f"{q['ask']} (why I ask: {q['origin']}; {self._chase_history_text(q)})" for qid, q in opens}}
             if len(owned) > 1:
-                pc = {"keep": f"keep {cur.get('name') if cur else 'my current partner'}"}
+                u_cur = used.get(cur.get("name")) if cur else None
+                cur_avg = _mmss(u_cur["time_sum"] / u_cur["runs"]) if u_cur and u_cur.get("runs") else ""
+                pc = {"keep": (f"keep {cur.get('name')} (shown stats hp {cur.get('hp')} atk {cur.get('atk')} spd {cur.get('spd')}, "
+                               f"stars {cur.get('rarity')}; my runs with it: {u_cur['runs'] if u_cur else 0}"
+                               f"{', avg ' + cur_avg + ', best ' + _mmss(u_cur['best']) if u_cur and u_cur.get('runs') else ''})")
+                      if cur else "keep my current partner"}
                 asked = {q["about"].split(":", 1)[1] for q in self.data["questions"].values()
                          if q["kind"] == "partner" and q["status"] != "answered"}
                 shortlist = [o for o in owned if str(o.get("dex")) in asked] + \
                     sorted([o for o in owned if used.get(o.get("name"), {}).get("runs")],
-                           key=lambda o: -used[o["name"]].get("best", 0))
+                           key=lambda o: -(used[o["name"]].get("time_sum", 0) / max(1, used[o["name"]].get("runs", 1)) * 0.6 + used[o["name"]].get("best", 0) * 0.4))
                 for o in shortlist[:10]:
                     if (cur and o.get("dex") == cur.get("dex")) or f"dex_{o.get('dex')}" in pc:
                         continue
                     u = used.get(o.get("name"))
+                    u_avg = _mmss(u["time_sum"] / u["runs"]) if u and u.get("runs") else ""
                     pc[f"dex_{o.get('dex')}"] = (f"{o.get('name')} (shown stats hp {o.get('hp')} atk {o.get('atk')} spd {o.get('spd')}, "
                                                 f"stars {o.get('rarity')}; my runs with it: {u['runs'] if u else 0}"
-                                                f"{', best ' + _mmss(u['best']) if u else ''})")
-                qs["partner"] = {"type": "choice", "instructions": "Which partner should I play next run? If my question is about a partner, pick that one.", "criteria": pc}
+                                                f"{', avg ' + u_avg + ', best ' + _mmss(u['best']) if u and u.get('runs') else ''})")
+                qs["partner"] = {"type": "choice", "instructions": "Which partner should I play next run to survive longest toward 31:00 (or to test my partner question if I chose one)? Judge from shown stats and my average/best survival records.", "criteria": pc}
             state = {"goal": "clear 31:00; I learn the game like a player - by asking questions and testing them",
                      "my_beliefs": self.top_beliefs(8), "recent_runs": self.engine.history_table(6),
                      "last_diary": [d["text"] for d in self.data["diary"][-3:]]}
@@ -882,7 +932,7 @@ class Journal:
                 build_id = b if b in builds else build_id
                 s = sample(a.get("stance", {}))
                 stance = s if s in STANCES else stance
-                pch = a.get("partner", {}).get("choice", "") if "partner" in qs else ""
+                pch = (sample(a.get("partner", {})) or a.get("partner", {}).get("choice", "")) if "partner" in qs else ""
                 if pch.startswith("dex_"):
                     try:
                         partner_dex = int(pch[4:])
@@ -913,21 +963,19 @@ class Journal:
         if q:
             q["status"] = "investigating"
             q["times_focused"] = int(q.get("times_focused", 0)) + 1
-        target_partner = self._partner_name(partner_dex) if partner_dex is not None else None
+        target_partner = (self._partner_name(partner_dex) if partner_dex is not None else None) or default_partner
+        if target_partner and target_partner != default_partner:
+            builds = self._build_options(target_partner)
         # Check if the chosen build relies on moves that were only ever offered to other partners
-        if target_partner and build_id != "free":
-            partner_offers, other_offers = set(), set()
-            for f in self._recent_run_files(60):
-                p_name = f.get("partner")
-                for p in f.get("picks") or []:
-                    off = p.get("offered") or []
-                    if p_name == target_partner:
-                        partner_offers.update(off)
-                    else:
-                        other_offers.update(off)
-            prefer = builds[build_id].get("prefer", [])
-            if any((pref in other_offers and pref not in partner_offers) for pref in prefer if pref.startswith("up:")):
-                build_id = "free"
+        if target_partner:
+            partner_offers, other_offers = self._partner_offers(target_partner)
+            prefer = (builds.get(build_id) or {}).get("prefer", [])
+            incompatible = build_id not in builds or (
+                build_id != "free" and bool(partner_offers) and
+                any((pref in other_offers and pref not in partner_offers) for pref in prefer if pref.startswith(("up:", "new:", "evo:")))
+            )
+            if incompatible:
+                build_id = "combo_multi_evo" if "combo_multi_evo" in builds else next((b for b in builds if b.startswith("rule_")), "free")
         policy = {**DEFAULT_POLICY, **(kb.get("best_policy") or {}), **STANCES[stance]["policy"]}
         plan = {"plan_id": f"p{int(time.time() * 1000)}", "focus_question": focus, "question_text": q["ask"] if q else None,
                 "partner_dex": partner_dex, "partner_name": target_partner,

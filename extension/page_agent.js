@@ -14,7 +14,7 @@
 
   console.log("%c[PokéSurvivor Jev Bot] Initializing MAIN world agent with Auto Skill Weaving...", "color:#ffcb3d; font-weight:bold; font-size:14px;");
 
-  const BOT_BUILD = "2026-10-16.5-telemetry"; // stamped into every run record; bump on behaviour changes
+  const BOT_BUILD = "2026-10-19.1-weave-fix+telegraph-evasion"; // stamped into every run record; bump on behaviour changes
   let PS = null; // Captured internal game namespace (_0x5c92f0)
   let botEnabled = true;
   let autoPlayMenus = true;
@@ -362,12 +362,26 @@
       enemyHpMap.set(e, curHp);
     }
 
-    // In-flight projectiles in the first 450ms after switching away from a damaging slot (or during a brief buff tap) belong to prevActiveSlot
-    const inPostSwitchGrace = (now - lastSlotSwitchTime) < 450 || buffTapUntil > 0;
+    // Reset measurement when a move evolves so its post-evolution DPS is measured cleanly
+    for (const s of player.slots) {
+      for (const m of (s || [])) {
+        const st = slotStats.get(m.id);
+        if (m.evolved && st && !st.wasEvolved) {
+          st.dmg = 0; st.kills = 0; st.combatSec = 0; st.wasEvolved = true;
+        }
+      }
+    }
+
+    const activeSlotMoves = player.slots[player.active] || [];
+    const activeTesting = activeSlotMoves.some((m) => ((slotStats.get(m.id) || {}).combatSec || 0) < 3.5);
+    const graceMs = activeTesting ? 900 : 450;
+
+    // In-flight projectiles in the first graceMs after switching away from a damaging slot (or during a brief buff tap) belong to prevActiveSlot
+    const inPostSwitchGrace = (now - lastSlotSwitchTime) < graceMs || buffTapUntil > 0;
     const creditIdx = (inPostSwitchGrace && prevActiveSlot < player.slots.length) ? prevActiveSlot : (player.active || 0);
     const creditSlot = player.slots[creditIdx] || [];
     for (const m of creditSlot) {
-      const st = slotStats.get(m.id) || { kills: 0, dmg: 0, combatSec: 0, lastCastT: 0 };
+      const st = slotStats.get(m.id) || { kills: 0, dmg: 0, combatSec: 0, lastCastT: 0, wasEvolved: !!m.evolved };
       // When 2 moves are fused in the same slot, do not credit damage/kills to a move already observed to be a 0-dmg support buff
       const knownZeroDmg = creditSlot.length > 1 && st.combatSec >= 3.5 && (st.dmg / st.combatSec) < 5;
       if (!knownZeroDmg) {
@@ -380,7 +394,7 @@
     if (!inPostSwitchGrace && nearEnemy) {
       const activeMoves = player.slots[player.active] || [];
       for (const m of activeMoves) {
-        const st = slotStats.get(m.id) || { kills: 0, dmg: 0, combatSec: 0, lastCastT: 0 };
+        const st = slotStats.get(m.id) || { kills: 0, dmg: 0, combatSec: 0, lastCastT: 0, wasEvolved: !!m.evolved };
         st.combatSec += dt;
         slotStats.set(m.id, st);
       }
@@ -421,7 +435,7 @@
       return { ...s, isBuff };
     });
 
-    const bestDmg = slotInfo.filter((s) => !s.isBuff).sort((a, b) => (b.dps - a.dps) || (b.kills - a.kills))[0] || slotInfo[0];
+    const bestDmg = slotInfo.filter((s) => !s.isBuff && s.moves.length > 0).sort((a, b) => (b.dps - a.dps) || (b.kills - a.kills))[0] || slotInfo[0];
     const currentInfo = slotInfo[player.active];
 
     // If current slot is an observed 0-damage buff, immediately switch back to best damaging weapon without post-switch grace leak
@@ -430,11 +444,14 @@
       return;
     }
 
-    // If any newly acquired slot has not been tested for 3.5s in close combat, test it so we learn its DPS
+    // If any newly acquired slot has not been tested for 3.5s in close combat, hold it continuously so we learn its true DPS
     const untested = slotInfo.find((s) => s.moves.length > 0 && s.cSec < 3.5);
-    if (untested && nearEnemy && (now - lastSlotSwitchTime) > 1800) {
-      if (untested.idx !== player.active) switchSlot(untested.idx, false);
-      return;
+    if (untested) {
+      if (untested.idx === player.active) return;
+      if (nearEnemy && (now - lastSlotSwitchTime) > 1800) {
+        switchSlot(untested.idx, false);
+        return;
+      }
     }
 
     // 3. From main weapon: check if any ready buff slot should be tapped briefly
@@ -450,7 +467,7 @@
       buffTapUntil = now + 220; // hold for 220ms to trigger buff cast
       const fm = buffCandidate.moves[0];
       if (fm) {
-        const st = slotStats.get(fm.id) || { kills: 0, dmg: 0, combatSec: 0, lastCastT: 0 };
+        const st = slotStats.get(fm.id) || { kills: 0, dmg: 0, combatSec: 0, lastCastT: 0, wasEvolved: !!fm.evolved };
         st.lastCastT = now;
         slotStats.set(fm.id, st);
       }
@@ -458,20 +475,20 @@
       return;
     }
 
-    // 4. Rotate among damaging weapons every rotate_s seconds (or stay on highest DPS weapon if rotate_s === 0)
-    const dmgSlots = slotInfo.filter((s) => !s.isBuff);
-    if (!policy.rotate_s) {
+    // 4. Rotate among competitive damaging weapons every rotate_s seconds (or stay on highest DPS weapon if rotate_s === 0)
+    const minCompetitiveDps = (bestDmg && bestDmg.cSec >= 3.5) ? bestDmg.dps * 0.55 : 0;
+    const dmgSlots = slotInfo.filter((s) => !s.isBuff && s.moves.length > 0 &&
+      (s.idx === (bestDmg && bestDmg.idx) || s.cSec < 3.5 || s.dps >= minCompetitiveDps));
+    if (!policy.rotate_s || dmgSlots.length <= 1) {
       if (bestDmg && bestDmg.idx !== player.active && (!currentInfo || currentInfo.cSec >= 3.5)) {
         switchSlot(bestDmg.idx);
       }
       return;
     }
     if ((now - lastSlotSwitchTime) / 1000 < policy.rotate_s) return;
-    if (dmgSlots.length > 1) {
-      const curPos = dmgSlots.findIndex((s) => s.idx === player.active);
-      const nextPos = (curPos + 1) % dmgSlots.length;
-      switchSlot(dmgSlots[nextPos].idx);
-    }
+    const curPos = dmgSlots.findIndex((s) => s.idx === player.active);
+    const nextPos = (curPos + 1) % dmgSlots.length;
+    switchSlot(dmgSlots[nextPos].idx);
   }
 
   // -------------------------------------------------------------
@@ -564,11 +581,12 @@
 
   function track(obj, now) {
     let tr = tracks.get(obj);
-    if (!tr) { tr = { x: obj.x, y: obj.y, t: now, vx: 0, vy: 0 }; tracks.set(obj, tr); return tr; }
+    if (!tr) { tr = { x: obj.x, y: obj.y, t: now, vx: 0, vy: 0, init: false }; tracks.set(obj, tr); return tr; }
     const dt = (now - tr.t) / 1000;
     if (dt > 0.001 && dt < 0.3) {
-      tr.vx = tr.vx * 0.7 + ((obj.x - tr.x) / dt) * 0.3;
-      tr.vy = tr.vy * 0.7 + ((obj.y - tr.y) / dt) * 0.3;
+      const ivx = (obj.x - tr.x) / dt, ivy = (obj.y - tr.y) / dt;
+      if (!tr.init) { tr.vx = ivx; tr.vy = ivy; tr.init = true; }
+      else { tr.vx = tr.vx * 0.6 + ivx * 0.4; tr.vy = tr.vy * 0.6 + ivy * 0.4; }
     }
     tr.x = obj.x; tr.y = obj.y; tr.t = now;
     return tr;
@@ -626,10 +644,17 @@
   function learnDanger(player, things, dt) {
     const px = player.x, py = player.y, pr = player.r || 14;
     const nearest = new Map();
+    const markFill = new Map();
     for (const t of things) {
+      if (t.done) continue;
       const b = binOf(edgeNow(t, px, py, pr));
       if (b < 0) continue;
-      if (!nearest.has(t.key) || b < nearest.get(t.key)) nearest.set(t.key, b);
+      if (!nearest.has(t.key) || b < nearest.get(t.key)) {
+        nearest.set(t.key, b);
+        if (t.kind === "mark") markFill.set(t.key, t.fill || 0);
+      } else if (t.kind === "mark" && b === nearest.get(t.key)) {
+        markFill.set(t.key, Math.max(markFill.get(t.key) || 0, t.fill || 0));
+      }
     }
     if (PS.World && PS.World.isLiquid && PS.World.isLiquid(px, py)) nearest.set("terrain:liquid", 0);
     const nowT = performance.now() / 1000;
@@ -638,10 +663,9 @@
       hist.push([nowT, b]);
       while (hist.length && nowT - hist[0][0] > 0.9) hist.shift();
       binHistory.set(key, hist);
-      // For ground markings, only accumulate exposure when the telegraph is nearly full/charging
+      // For ground markings, only accumulate exposure when the active telegraph is nearly full/charging
       const isMark = key.startsWith("mark:");
-      const markThing = isMark ? things.find((t) => t.key === key) : null;
-      const shouldAddExp = !isMark || ((markThing && markThing.fill >= 0.7) || dt === 0);
+      const shouldAddExp = !isMark || ((markFill.get(key) || 0) >= 0.7 || dt === 0);
       if (shouldAddExp) {
         addDanger(key, b, dt, 0);
         if (key.startsWith("enemy:") || key.startsWith("boss:")) addDanger(key.split(":")[0] + ":ANY", b, dt, 0);
@@ -861,16 +885,23 @@
   const K_DANGER = 1800;
   function costAt(t, x, y, h, pr, W) {
     if (t.done) return 0;
+    const px0 = motion.lastX ?? x, py0 = motion.lastY ?? y;
     let edge;
-    if (t.kind === "mark") edge = -hazardDepth(t.hz, x, y, pr);
-    else if (t.kind === "shot") {
-      const v2 = t.vx * t.vx + t.vy * t.vy;
+    if (t.kind === "mark") {
+      const tau = (t.tLeft > 0 && t.tLeft < h) ? t.tLeft : h;
+      const frac = h > 1e-4 ? (tau / h) : 1.0;
+      const mx = px0 + (x - px0) * frac, my = py0 + (y - py0) * frac;
+      edge = -hazardDepth(t.hz, mx, my, pr);
+    } else if (t.kind === "shot") {
+      const pvx = h > 1e-4 ? (x - px0) / h : 0, pvy = h > 1e-4 ? (y - py0) / h : 0;
+      const rvx = t.vx - pvx, rvy = t.vy - pvy;
+      const rv2 = rvx * rvx + rvy * rvy;
       let rx, ry;
-      if (v2 > 1e-4) {
-        const u = ((x - t.x) * t.vx + (y - t.y) * t.vy) / v2;
+      if (rv2 > 1e-4) {
+        const u = ((px0 - t.x) * rvx + (py0 - t.y) * rvy) / rv2;
         const uClamped = Math.max(0, Math.min(h, u));
-        rx = t.x + t.vx * uClamped - x;
-        ry = t.y + t.vy * uClamped - y;
+        rx = (t.x - px0) + rvx * uClamped;
+        ry = (t.y - py0) + rvy * uClamped;
       } else {
         rx = t.x - x;
         ry = t.y - y;
@@ -883,7 +914,15 @@
     const b = binOf(edge);
     if (b < 0) return 0;
     let r = dangerRate(t.key, b);
-    if (t.kind === "mark") r *= (0.75 + 0.75 * (t.fill || 0.5)) * (t.tLeft <= h + 0.35 ? 1.6 : 1.0);
+    if (t.kind === "mark") {
+      r *= (0.75 + 0.75 * (t.fill || 0.5));
+      // A filling marking hurts in one burst when it completes, not per-second:
+      // a step that is still inside at that moment (or too deep to escape in remaining time) must cost like a burst.
+      const remT = Math.max(0, t.tLeft - h);
+      const inescapable = b === 0 && (-edge) > remT * (motion.speed || 110) * 0.95;
+      if (t.tLeft <= h || inescapable) r *= (b === 0 ? 5.0 : 1.6);
+      else if (t.tLeft <= h + 0.35) r *= 1.6;
+    }
     // When inside a hazard (b === 0, edge < 0), depth increases linearly without a cap so bot has a steep exit gradient
     let within = 0;
     if (b === 0) {
@@ -925,14 +964,26 @@
       const key = `pickup:${p.kind}`;
       const lg = learnedGains("pickups", key);
       let v = lg.n ? gainValue(lg.avg) : 0;
-      if (lg.n && hpFrac < 0.6) v += policy.w_hp * (lg.avg.hp || 0) * 3;   // when hurt, what heals me matters more
+      // HP I cannot hold is worth nothing: discount the HP part by how full I am.
+      if (lg.n && (lg.avg.hp || 0) > 0) v -= policy.w_hp * lg.avg.hp * hpFrac;
+      const healThr = A.heal_seek_threshold ?? 0.65;
+      if (lg.n && hpFrac < healThr && (lg.avg.hp || 0) > 0) {
+        // When hurt, what heals me matters more the lower my HP is: in my own
+        // history, runs that recovered after dropping low lived far longer.
+        v += policy.w_hp * lg.avg.hp * 3 * (1 + 4 * (healThr - hpFrac) / healThr);
+      }
       const curious = lg.n < 5;                                              // rarely picked up: go see what it does
-      const baseV = curious ? 120 : Math.max(16, v);
+      // Measured gains are small fractions; scale them into target-value range so
+      // pickup kinds can outrank each other (a flat floor made them all equal).
+      const baseV = curious ? 120 : Math.max(6, v * 10);
       const special = curious || baseV >= 60;
       targets.push({ x: p.x, y: p.y, V: baseV * W.greed + 4, d0: d, isSpecial: special });
     }
 
-    const inTelegraph = things.some((t) => t.kind === "mark" && !t.done && edgeNow(t, px, py, pr) < 25 && dangerRate(t.key, 0) > 0.005);
+    const inTelegraph = things.some((t) => !t.done && (
+      (t.kind === "mark" && edgeNow(t, px, py, pr) < 25 && dangerRate(t.key, 0) > 0.005) ||
+      (t.kind === "shot" && edgeNow(t, px, py, pr) < 18 && dangerRate("shot", 0) > 0.005)
+    ));
     const activeMapGoal = goal && !(goal.ref && goal.ref.portal && goal.entered) && !(goal.postDisappearT > 0);
     const goalDist = activeMapGoal ? Math.hypot(goal.x - px, goal.y - py) : 9999;
     if (activeMapGoal && !inTelegraph) {
@@ -1048,6 +1099,13 @@
     }
 
     const H = [0.12, 0.3, 0.6], HW = [1.0, 0.75, 0.45];
+    // Look as far as the moment a nearby filling marking completes, so leaving
+    // early enough can be told apart from leaving too late.
+    let burstH = 0;
+    for (const t of things) {
+      if (t.kind === "mark" && !t.done && t.tLeft > 0.6 && t.tLeft <= 1.6 && edgeNow(t, px, py, pr) < 35) burstH = Math.max(burstH, t.tLeft);
+    }
+    if (burstH) { H.push(burstH); HW.push(0.6); }
     const evalDir = (ux, uy, ignoreWalk = false) => {
       let cost = 0, fx = px, fy = py;
       const wetRatio = liquidSpeedRatio();
@@ -1646,6 +1704,11 @@
       } catch (e) {}
     }
     claimMissionsAndAchievements();
+    if (res && res.data && res.data.expected_bot_build && res.data.expected_bot_build !== BOT_BUILD) {
+      console.log(`%c[Bot] New extension build on disk (${res.data.expected_bot_build} vs ${BOT_BUILD}) — reloading tab...`, "color:#5fe08a;font-weight:bold;");
+      setTimeout(() => location.reload(), 300);
+      return;
+    }
     runState.active = false;
     runState.ending = false;
   }
