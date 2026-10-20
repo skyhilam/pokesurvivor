@@ -1,0 +1,237 @@
+{
+  "decisions": {
+    "handle_levelup": {
+      "state_goal": "clear 31:00 by becoming strong enough to wipe dense waves and bosses",
+      "card_selection": {
+        "type": "choice",
+        "instructions": "Choose the card that will make me strongest, judging only from the card text, my plan for this run, my beliefs and hunches, and what I have observed after picking cards before. Focus on finishing one damaging move's upgrades to trigger its evolution before spreading upgrades thin across other moves, and pick its paired stat once.",
+        "instructions_early_survival": " [EARLY SURVIVAL: I have only 1 damaging attack. I urgently need a 2nd damaging attack to survive early enemy swarms before picking utility stats.]",
+        "criteria": {
+          "card": "{title} | {desc} | my experience: {experience}",
+          "reroll": "replace these cards with random new ones (uses 1 reroll)"
+        },
+        "annotations": {
+          "already_picked_stat": " | (already picked this stat once this run; prioritise levelling moves to trigger evolution)",
+          "plan_wants_card": " | MY PLAN FOR THIS RUN WANTS THIS CARD",
+          "zero_damage_buff": " | (0-damage support buff — do not prioritise over damaging attacks)",
+          "top_priority_evolution": " | TOP PRIORITY: FINISH UPGRADING MY MAIN ATTACK (now Lv.{lvl}) TO TRIGGER EVOLUTION!",
+          "upgrades_equipped_attack": " | UPGRADES MY EQUIPPED ATTACK (now Lv.{lvl}) TOWARD EVOLUTION",
+          "journal_stat_pair": " | MY JOURNAL SAYS THIS STAT PAIRS WITH MY EQUIPPED '{m_id}' FOR EVOLUTION (not picked yet)",
+          "need_early_attack": " | NEED EARLY ATTACK (I only have 1 attack and need wave-clearing DPS)"
+        }
+      }
+    },
+    "handle_item": {
+      "item_decision": {
+        "type": "choice",
+        "instructions": "Keep my held item or swap it, judging only from the text and my experience.",
+        "criteria": {
+          "keep_current": "keep {title}: {desc} | my experience: {experience}",
+          "equip_new": "take {title}: {desc} | my experience: {experience}"
+        }
+      }
+    },
+    "handle_bond": {
+      "bond_pick": {
+        "type": "choice",
+        "instructions": "Pick move to fuse into the concurrent multi-cast group.",
+        "criteria": {
+          "move": "Bond move {name} (Lvl {lvl})"
+        }
+      }
+    },
+    "jev_policy": {
+      "state_goal": "clear 31:00 by becoming strong enough to wipe dense waves and bosses",
+      "base": {
+        "type": "choice",
+        "instructions": "Start from which policy?",
+        "criteria": {
+          "best": "the policy of my highest-scoring run",
+          "last": "the policy of my last run"
+        }
+      },
+      "experiment": {
+        "type": "choice",
+        "instructions": "Pick the ONE change to test in the next run to become stronger and survive longer.",
+        "criteria_templates": {
+          "lower": "lower '{knob}' ({meaning})",
+          "higher": "raise '{knob}' ({meaning})",
+          "rotate_s": "set rotate_s={value} ({meaning})"
+        },
+        "criteria": {
+          "explore:0": "stop investigating unknown things",
+          "explore:1": "investigate unknown things"
+        }
+      }
+    },
+    "checkpoint": {
+      "state_goal": "clear 31:00 by becoming strong enough to wipe dense waves and bosses",
+      "aggression_now": {
+        "type": "choice",
+        "instructions": "For the next minute, should I push closer into combat range to kill enemies faster, or back off?",
+        "criteria": {
+          "lower": "back off / safer",
+          "same": "maintain current attack distance",
+          "higher": "push closer to kill faster"
+        }
+      },
+      "fear_now": {
+        "type": "choice",
+        "instructions": "For the next minute, steer away from dangerous contact...",
+        "criteria": {
+          "lower": "evade less",
+          "same": "maintain evasion",
+          "higher": "evade more"
+        }
+      },
+      "greed_now": {
+        "type": "choice",
+        "instructions": "For the next minute, sweep up XP gems and pickups...",
+        "criteria": {
+          "lower": "ignore distant gems",
+          "same": "normal pickup greed",
+          "higher": "sweep all XP aggressively"
+        }
+      }
+    },
+    "end_run_no_journal": {
+      "state_goal": "clear 31:00 by becoming strong enough to wipe dense waves and bosses",
+      "failure_diagnosis": {
+        "type": "choice",
+        "instructions": "From what I observed, what ended this run?",
+        "criteria": {
+          "contact_damage": "touching enemies directly",
+          "area_telegraphs": "ground markings going off",
+          "projectiles": "things flying at me",
+          "terrain": "terrain / liquid hazards",
+          "overwhelmed_by_numbers": "swarmed by too many enemies",
+          "too_weak_insufficient_kills": "my offensive power and kill rate fell behind the enemy swarm"
+        }
+      },
+      "policy_verdict": {
+        "type": "choice",
+        "instructions": "Compared with my previous runs, did this run's policy change help me become stronger and progress further?",
+        "criteria": {
+          "helped": "it helped",
+          "hurt": "it made things worse",
+          "unclear": "too noisy to tell"
+        }
+      }
+    },
+    "engage": {
+      "state_goal": "clear 31:00 by becoming strong enough to wipe dense waves and bosses",
+      "engage": {
+        "type": "choice",
+        "instructions": "Should I go to this {key} now? Decide from my own experience with it, my curiosity, my question for this run, and the risk right now.",
+        "criteria": {
+          "engage": "go to it / touch it now",
+          "skip": "leave it for now"
+        }
+      }
+    },
+    "partner_meta": {
+      "partner": {
+        "type": "choice",
+        "instructions": "Choose my partner for the next run using only the shown stats and my own results with each partner.",
+        "criteria_templates": {
+          "keep": "keep {name} (my results: {results})",
+          "other": "{name} - shown stats hp {hp} atk {atk} spd {spd}, stars {rarity}; my results: {results}"
+        }
+      }
+    },
+    "gacha": {
+      "gacha": {
+        "type": "choice",
+        "instructions": "I have {n_tickets} tickets {tickets}. The menu has a gacha that uses them. I have pulled {pulls_before} times before and gained these partners from it: {partners_gained}. I own {owned_count} partners and have only ever played {used}. Use the tickets now?",
+        "criteria": {
+          "pull": "use the tickets now",
+          "keep": "keep them for later"
+        }
+      }
+    },
+    "upgrade": {
+      "upgrade": {
+        "type": "choice",
+        "instructions": "Pick one permanent upgrade to buy now (or save), judging only from the description and my results.",
+        "criteria_templates": {
+          "save": "save coins for later (I already chose to save {streak} times in a row; coins do nothing until spent)",
+          "option": "{name}: {desc} (level {level}/{max}, cost {cost}); {seen}",
+          "seen_bought": "runs after buying: {runs_after}, avg survival change {avg_delta}",
+          "seen_never": "never bought - I don't know what it really does for me"
+        }
+      }
+    },
+    "journal_reflect": {
+      "state_goal": "clear 31:00; become strong enough to wipe dense waves and bosses",
+      "failure_diagnosis": {
+        "type": "choice",
+        "instructions": "From what I observed, what ended this run?",
+        "criteria": {
+          "contact_damage": "touching enemies directly",
+          "area_telegraphs": "ground markings going off",
+          "projectiles": "things flying at me",
+          "terrain": "terrain / liquid hazards",
+          "overwhelmed_by_numbers": "swarmed by too many enemies",
+          "too_weak_insufficient_kills": "my offensive power fell behind the enemy swarm"
+        }
+      },
+      "stance_verdict": {
+        "type": "choice",
+        "instructions": "Compared with my recent runs, did this run's play style and build help me get stronger and last longer?",
+        "criteria": {
+          "helped": "it helped",
+          "hurt": "it made things worse",
+          "unclear": "too noisy to tell"
+        }
+      },
+      "focus_answer": {
+        "type": "choice",
+        "instructions": "My question this run was: '{ask}'. Does the evidence answer it?",
+        "criteria": {
+          "answered": "yes - the evidence answers it well enough",
+          "keep_investigating": "partly - I need more runs to be sure",
+          "could_not_test": "I did not really get to test it this run"
+        }
+      }
+    },
+    "plan_next": {
+      "state_goal": "clear 31:00; I learn the game like a player - by asking questions and testing them",
+      "build_goal": {
+        "type": "choice",
+        "instructions": "What should my card-picking plan be next run?",
+        "criteria_templates": {
+          "option": "{text} (my record: {record})",
+          "record": "{n} runs, avg survived {survived}, avg power {power}, avg {evolutions} evolutions",
+          "never": "never tried"
+        }
+      },
+      "stance": {
+        "type": "choice",
+        "instructions": "Which play style should I use next run?",
+        "criteria_templates": {
+          "option": "{desc} (my record: {record})",
+          "record": "{n} runs, avg score {avg_score}",
+          "never": "never tried"
+        }
+      },
+      "focus_question": {
+        "type": "choice",
+        "instructions": "Like a curious player: which ONE question do I most want to answer next run?",
+        "criteria_templates": {
+          "option": "{ask} (why I ask: {origin}; {chase_history})"
+        }
+      },
+      "partner": {
+        "type": "choice",
+        "instructions": "Which partner should I play next run to survive longest toward 31:00 (or to test my partner question if I chose one)? Judge from shown stats and my average/best survival records.",
+        "criteria_templates": {
+          "keep_no_current": "keep my current partner",
+          "keep_with_runs": "keep {name} (shown stats hp {hp} atk {atk} spd {spd}, stars {rarity}; my runs with it: {runs}, avg {avg}, best {best})",
+          "keep_without_runs": "keep {name} (shown stats hp {hp} atk {atk} spd {spd}, stars {rarity}; my runs with it: {runs})",
+          "other_with_runs": "{name} (shown stats hp {hp} atk {atk} spd {spd}, stars {rarity}; my runs with it: {runs}, avg {avg}, best {best})",
+          "other_without_runs": "{name} (shown stats hp {hp} atk {atk} spd {spd}, stars {rarity}; my runs with it: {runs})"
+        }
+      }
+    }
+  }
+}

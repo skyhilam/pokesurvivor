@@ -1,0 +1,17 @@
+{
+  "jev_timeout_s": {
+    "default": 6.0,
+    "handle_levelup": 4.0,
+    "handle_item": 4.0,
+    "handle_bond": 4.0,
+    "jev_policy": 8.0,
+    "checkpoint": 3.5,
+    "end_run_no_journal": 6.0,
+    "engage": 2.5,
+    "partner_meta": 4.0,
+    "gacha": 3.0,
+    "upgrade": 4.0,
+    "journal_reflect": 6.0,
+    "plan_next": 6.0
+  }
+}
