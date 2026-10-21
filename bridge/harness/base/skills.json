@@ -1,0 +1,62 @@
+{
+  "handle_levelup": {
+    "shortcut_order": [
+      "learned_evolution",
+      "on_screen_evolves_hint",
+      "learned_combo_pair",
+      "need_early_attack"
+    ],
+    "shortcuts": {
+      "learned_evolution": {
+        "enabled": true,
+        "kind": "early_return"
+      },
+      "on_screen_evolves_hint": {
+        "enabled": true,
+        "kind": "early_return"
+      },
+      "learned_combo_pair": {
+        "enabled": true,
+        "kind": "early_return"
+      },
+      "need_early_attack": {
+        "enabled": true,
+        "kind": "annotation",
+        "max_level": 5,
+        "damaging_moves_below": 2
+      }
+    },
+    "fallback_score": {
+      "weights": [
+        {
+          "id": "unseen",
+          "value": 15
+        },
+        {
+          "id": "zero_damage",
+          "value": -25
+        },
+        {
+          "id": "early_attack",
+          "value": 50
+        },
+        {
+          "id": "upgrade_base",
+          "value": 40
+        },
+        {
+          "id": "upgrade_per_level",
+          "value": 12
+        },
+        {
+          "id": "stat_repeat",
+          "value": -20
+        },
+        {
+          "id": "paired_stat",
+          "value": 35
+        }
+      ]
+    }
+  }
+}

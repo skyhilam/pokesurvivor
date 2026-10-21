@@ -3,27 +3,26 @@
 Pure-mode guard: the live bot (bridge + extension) must not load or embed knowledge
 taken from the game's source code. It has to discover the game by playing.
 
+Patterns live in bridge/pure_forbidden.json (pattern -> reason), shared with
+harness_tree.validate_tree. Live Python reads that file instead of embedding the
+phrases. Markdown and JSON under bridge/harness/ are checked too.
+
     python3 bridge/test_pure_mode.py
 """
 import re
 import sys
 from pathlib import Path
 
+from harness_tree import load_forbidden
+
 ROOT = Path(__file__).resolve().parent.parent
+HARNESS = ROOT / "bridge" / "harness"
 LIVE = [p for p in (ROOT / "bridge").glob("*.py") if not p.name.startswith(("test_", "cleanup_"))] + \
        list((ROOT / "extension").glob("*.js"))
+if HARNESS.is_dir():
+    LIVE += [p for p in HARNESS.rglob("*") if p.is_file() and p.suffix in {".md", ".json"}]
 
-FORBIDDEN = {
-    r"archive[/\\]assisted": "loads the archived source-assisted mode",
-    r"game_kb_from_source": "loads facts extracted from the game's source code",
-    r"Nv\.8": "hard-codes the max move level / evolution rule",
-    r"SPECIAL_PICKUP_VALUES": "hand-written pickup values instead of measured ones",
-    r"missingByGen": "gacha banner heuristic copied from the source-assisted version",
-    r"is_valuable": "hand-written 'this object is valuable' keyword list",
-    r"SUPPORT_BUFF_MOVES": "hand-written list of which moves are buffs",
-    r"KNOWN_BUFF_MOVES": "hand-written list of which moves are buffs",
-    r"provide items, tickets, and evolutions": "prompt claims about what map objects give",
-}
+FORBIDDEN = load_forbidden()
 
 bad = []
 for p in LIVE:

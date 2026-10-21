@@ -1,0 +1,164 @@
+{
+  "shared": {
+    "extra_context": {
+      "source": "world_brief",
+      "k": 10
+    }
+  },
+  "decisions": {
+    "handle_levelup": {
+      "lessons": 6,
+      "beliefs": 6,
+      "card_rules": 5,
+      "inject": {
+        "my_lessons": {
+          "source": "top_lessons",
+          "k": 6
+        },
+        "my_beliefs": {
+          "source": "top_beliefs",
+          "k": 6
+        },
+        "card_rules_i_discovered": {
+          "source": "card_rules",
+          "only_supported": true,
+          "k": 5
+        }
+      }
+    },
+    "handle_item": {
+      "lessons": 4,
+      "inject": {
+        "my_lessons": {
+          "source": "top_lessons",
+          "k": 4
+        }
+      }
+    },
+    "handle_bond": {
+      "inject": {}
+    },
+    "jev_policy": {
+      "lessons": 4,
+      "world_brief": 10,
+      "learned_cap": 8,
+      "inject": {
+        "what_i_have_learned": {
+          "source": "extra_context_plus_lessons",
+          "world_brief": 10,
+          "lessons": 4,
+          "cap": 8
+        }
+      }
+    },
+    "checkpoint": {
+      "lessons": 4,
+      "inject": {
+        "my_lessons": {
+          "source": "top_lessons",
+          "k": 4
+        }
+      }
+    },
+    "end_run_no_journal": {
+      "world_brief": 10,
+      "history": 10,
+      "inject": {
+        "learned": {
+          "source": "world_brief",
+          "k": 10
+        },
+        "history": {
+          "source": "history_table",
+          "k": 10
+        }
+      }
+    },
+    "run_start": {
+      "lessons": 5,
+      "inject": {
+        "lessons": {
+          "source": "top_lessons",
+          "k": 5
+        }
+      }
+    },
+    "end_run_response": {
+      "lessons": 5,
+      "inject": {
+        "lessons": {
+          "source": "top_lessons",
+          "k": 5
+        }
+      }
+    },
+    "engage": {
+      "world_brief": 8,
+      "inject": {
+        "what_i_know": {
+          "source": "world_brief",
+          "k": 8
+        }
+      }
+    },
+    "partner_meta": {
+      "recent_runs": 6,
+      "inject": {
+        "recent_runs": {
+          "source": "runs_tail",
+          "k": 6
+        }
+      }
+    },
+    "gacha": {
+      "inject": {}
+    },
+    "upgrade": {
+      "lessons": 5,
+      "recent_runs": 6,
+      "inject": {
+        "lessons": {
+          "source": "top_lessons",
+          "k": 5
+        },
+        "recent_runs": {
+          "source": "runs_tail",
+          "k": 6
+        }
+      }
+    },
+    "journal_reflect": {
+      "beliefs": 6,
+      "recent_runs": 6,
+      "inject": {
+        "my_beliefs": {
+          "source": "top_beliefs",
+          "k": 6
+        },
+        "recent_runs": {
+          "source": "history_table",
+          "k": 6
+        }
+      }
+    },
+    "plan_next": {
+      "beliefs": 8,
+      "recent_runs": 6,
+      "last_diary": 3,
+      "inject": {
+        "my_beliefs": {
+          "source": "top_beliefs",
+          "k": 8
+        },
+        "recent_runs": {
+          "source": "history_table",
+          "k": 6
+        },
+        "last_diary": {
+          "source": "diary_tail",
+          "k": 3
+        }
+      }
+    }
+  }
+}

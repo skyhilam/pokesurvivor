@@ -174,8 +174,9 @@ class WorldModel:
 
         jev = self.engine.jev
         if jev:
+            spec = self.engine.harness.get("tool_guidance.decisions.engage.engage")
             state = {
-                "goal": "clear 31:00 by becoming strong enough to wipe dense waves and bosses",
+                "goal": self.engine.decision_goal("engage"),
                 "thing": key,
                 "my_experience_with_it": self.object_line(key),
                 "is_this_my_question_this_run": is_my_question,
@@ -186,19 +187,16 @@ class WorldModel:
                     "things_near_me": d.get("enemies_near"), "time": d.get("t")
                 },
                 "recent_on_screen_text": d.get("messages") or [],
-                "what_i_know": self.brief(8)
+                "what_i_know": self.brief(self.engine.memory_int("engage", "world_brief"))
             }
             q = {
                 "engage": {
-                    "type": "choice",
-                    "instructions": f"Should I go to this {key} now? Decide from my own experience with it, my curiosity, my question for this run, and the risk right now.",
-                    "criteria": {
-                        "engage": "go to it / touch it now",
-                        "skip": "leave it for now"
-                    }
+                    "type": spec["type"],
+                    "instructions": self.engine.harness_text("decisions.engage.engage.instructions", key=key),
+                    "criteria": dict(spec["criteria"]),
                 }
             }
-            res = jev(state, q, 2.5)
+            res = jev(state, q, self.engine.jev_timeout("engage"))
             if res and "answers" in res:
                 ans = res["answers"].get("engage", {})
                 if v["tried"] >= 2:
@@ -268,14 +266,19 @@ class WorldModel:
         if journal and plan.get("partner_dex") is not None and plan["partner_dex"] in owned_dex:
             choice, source = plan["partner_dex"], "plan"
         elif jev and len(owned) > 1:
-            crit = {"keep": f"keep {cur.get('name')} (my results: {stats.get(cur.get('name'), 'none')})"}
+            keep_t = self.engine.harness_text("decisions.partner_meta.partner.criteria_templates.keep")
+            other_t = self.engine.harness_text("decisions.partner_meta.partner.criteria_templates.other")
+            spec = self.engine.harness.get("tool_guidance.decisions.partner_meta.partner")
+            crit = {"keep": keep_t.format(name=cur.get("name"), results=stats.get(cur.get("name"), "none"))}
             for p in owned[:12]:
                 if p.get("dex") != cur.get("dex"):
-                    crit[f"dex_{p['dex']}"] = (f"{p.get('name')} - shown stats hp {p.get('hp')} atk {p.get('atk')} spd {p.get('spd')}, "
-                                               f"stars {p.get('rarity')}; my results: {stats.get(p.get('name'), 'never used')}")
-            q = {"partner": {"type": "choice", "criteria": crit, "instructions":
-                 "Choose my partner for the next run using only the shown stats and my own results with each partner."}}
-            res = jev({"recent_runs": self.engine.kb["runs"][-6:]}, q, 4.0)
+                    crit[f"dex_{p['dex']}"] = other_t.format(
+                        name=p.get("name"), hp=p.get("hp"), atk=p.get("atk"), spd=p.get("spd"),
+                        rarity=p.get("rarity"), results=stats.get(p.get("name"), "never used"),
+                    )
+            q = {"partner": {"type": spec["type"], "criteria": crit, "instructions": spec["instructions"]}}
+            res = jev({"recent_runs": self.engine.kb["runs"][-self.engine.memory_int("partner_meta", "recent_runs"):]},
+                      q, self.engine.jev_timeout("partner_meta"))
             if res and "answers" in res:
                 ch = res["answers"].get("partner", {}).get("choice", "")
                 if ch.startswith("dex_"):
@@ -295,13 +298,18 @@ class WorldModel:
         elif pull and jev:
             ms = journal.data["meta_seen"] if journal else {}
             used = sorted(n for n, p in stats.items() if p.get("runs"))
-            q = {"gacha": {"type": "choice",
-                           "instructions": (f"I have {n_tickets} tickets {tickets}. The menu has a gacha that uses them. "
-                                            f"I have pulled {pulls_before} times before and gained these partners from it: "
-                                            f"{[p.get('name') for p in ms.get('partners_gained', [])]}. "
-                                            f"I own {len(ms.get('owned') or [])} partners and have only ever played {used}. Use the tickets now?"),
-                           "criteria": {"pull": "use the tickets now", "keep": "keep them for later"}}}
-            res = jev({"partners_owned": len(owned), "my_partner_results": stats}, q, 3.0)
+            gspec = self.engine.harness.get("tool_guidance.decisions.gacha.gacha")
+            q = {"gacha": {
+                "type": gspec["type"],
+                "instructions": self.engine.harness_text(
+                    "decisions.gacha.gacha.instructions",
+                    n_tickets=n_tickets, tickets=tickets, pulls_before=pulls_before,
+                    partners_gained=[p.get("name") for p in ms.get("partners_gained", [])],
+                    owned_count=len(ms.get("owned") or []), used=used,
+                ),
+                "criteria": dict(gspec["criteria"]),
+            }}
+            res = jev({"partners_owned": len(owned), "my_partner_results": stats}, q, self.engine.jev_timeout("gacha"))
             pull = bool(res and "answers" in res and res["answers"].get("gacha", {}).get("choice") == "pull")
             source_pull = "jev"
         else:
@@ -319,20 +327,24 @@ class WorldModel:
         jev = self.engine.jev
         journal = getattr(self.engine, "journal", None)
         streak = int(journal.data["meta_seen"].get("save_streak", 0)) if journal else 0
-        crit = {"save": f"save coins for later (I already chose to save {streak} times in a row; coins do nothing until spent)"}
+        templates = self.engine.harness.get("tool_guidance.decisions.upgrade.upgrade.criteria_templates")
+        crit = {"save": templates["save"].format(streak=streak)}
         if streak >= 3:
             crit.pop("save")   # hoarding forever teaches me nothing: try something
         for o in opts:
             h = hist.get(o["id"], {})
-            seen = (f"runs after buying: {h.get('runs_after', 0)}, avg survival change {h.get('avg_delta', 'unknown')}"
-                    if h.get("bought") else "never bought - I don't know what it really does for me")
-            crit[o["id"]] = (f"{o.get('name')}: {o.get('desc')} (level {o.get('level')}/{o.get('max')}, cost {o.get('cost')}); {seen}")
+            seen = (templates["seen_bought"].format(runs_after=h.get("runs_after", 0), avg_delta=h.get("avg_delta", "unknown"))
+                    if h.get("bought") else templates["seen_never"])
+            crit[o["id"]] = templates["option"].format(
+                name=o.get("name"), desc=o.get("desc"), level=o.get("level"), max=o.get("max"), cost=o.get("cost"), seen=seen,
+            )
         choice, source = opts[0]["id"], "fallback_first"
         if jev:
-            q = {"upgrade": {"type": "choice", "criteria": crit, "instructions":
-                 "Pick one permanent upgrade to buy now (or save), judging only from the description and my results."}}
-            res = jev({"coins": d.get("coins"), "recent_runs": self.engine.kb["runs"][-6:],
-                       "lessons": self.engine.top_lessons(5)}, q, 4.0)
+            spec = self.engine.harness.get("tool_guidance.decisions.upgrade.upgrade")
+            mem = self.engine.harness.get("memory.decisions.upgrade")
+            q = {"upgrade": {"type": spec["type"], "criteria": crit, "instructions": spec["instructions"]}}
+            res = jev({"coins": d.get("coins"), "recent_runs": self.engine.kb["runs"][-int(mem["recent_runs"]):],
+                       "lessons": self.engine.top_lessons(int(mem["lessons"]))}, q, self.engine.jev_timeout("upgrade"))
             if res and "answers" in res:
                 ch = res["answers"].get("upgrade", {}).get("choice", "")
                 if ch in crit:

@@ -1,0 +1,34 @@
+{
+  "id": "base",
+  "version": 1,
+  "components": [
+    "systemprompt",
+    "guardrails",
+    "memory",
+    "tool_guidance",
+    "subagents",
+    "skills",
+    "scripts",
+    "plugins"
+  ],
+  "files": {
+    "systemprompt": "systemprompt.md",
+    "guardrails": "guardrails.md",
+    "memory": "memory.json",
+    "tool_guidance": "tool_guidance.json",
+    "skills": "skills.json",
+    "plugins": "plugins.json"
+  },
+  "inject": {
+    "systemprompt": true,
+    "guardrails": false,
+    "memory": true,
+    "tool_guidance": true,
+    "skills": true,
+    "plugins": true
+  },
+  "unsupported": {
+    "subagents": "Jev only answers in-process choice questions, so this bot has no delegated subagent to edit.",
+    "scripts": "Combat and card picks run in the browser extension, so this harness ships no helper scripts."
+  }
+}

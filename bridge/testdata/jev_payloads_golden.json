@@ -1,0 +1,962 @@
+{
+  "handle_bond": [
+    {
+      "questions": {
+        "bond_pick": {
+          "criteria": {
+            "move_0": "Bond move Gust (Lvl 3)",
+            "move_1": "Bond move Tackle (Lvl 1)"
+          },
+          "instructions": "Pick move to fuse into the concurrent multi-cast group.",
+          "type": "choice"
+        }
+      },
+      "state": {
+        "bond_mode": "pair",
+        "game": "pokesurvivor",
+        "moves_available": [
+          "Gust",
+          "Tackle"
+        ],
+        "time": 60
+      },
+      "timeout": 4.0
+    }
+  ],
+  "handle_checkpoint": [
+    {
+      "questions": {
+        "aggression_now": {
+          "criteria": {
+            "higher": "push closer to kill faster",
+            "lower": "back off / safer",
+            "same": "maintain current attack distance"
+          },
+          "instructions": "For the next minute, should I push closer into combat range to kill enemies faster, or back off?",
+          "type": "choice"
+        },
+        "fear_now": {
+          "criteria": {
+            "higher": "evade more",
+            "lower": "evade less",
+            "same": "maintain evasion"
+          },
+          "instructions": "For the next minute, steer away from dangerous contact...",
+          "type": "choice"
+        },
+        "greed_now": {
+          "criteria": {
+            "higher": "sweep all XP aggressively",
+            "lower": "ignore distant gems",
+            "same": "normal pickup greed"
+          },
+          "instructions": "For the next minute, sweep up XP gems and pickups...",
+          "type": "choice"
+        }
+      },
+      "state": {
+        "goal": "clear 31:00 by becoming strong enough to wipe dense waves and bosses",
+        "me_now": {
+          "dmg_per_min": 30,
+          "enemies": 4,
+          "hp_pct": 0.5,
+          "kills": 20,
+          "level": 5
+        },
+        "my_lessons": [
+          "[0.90] lesson 0",
+          "[0.89] lesson 1",
+          "[0.88] lesson 2",
+          "[0.87] lesson 3"
+        ],
+        "time": "01:20"
+      },
+      "timeout": 3.5
+    }
+  ],
+  "handle_item": [
+    {
+      "questions": {
+        "item_decision": {
+          "criteria": {
+            "equip_new": "take Scope: see farther | my experience: never picked before",
+            "keep_current": "keep Berry: heals a little | my experience: never picked before"
+          },
+          "instructions": "Keep my held item or swap it, judging only from the text and my experience.",
+          "type": "choice"
+        }
+      },
+      "state": {
+        "game": "pokesurvivor",
+        "my_lessons": [
+          "[0.90] lesson 0",
+          "[0.89] lesson 1",
+          "[0.88] lesson 2",
+          "[0.87] lesson 3"
+        ],
+        "time": 50
+      },
+      "timeout": 4.0
+    }
+  ],
+  "handle_levelup": [
+    {
+      "questions": {
+        "card_selection": {
+          "criteria": {
+            "card_0": "Power Upgrade | raises power | my experience: never picked before | (already picked this stat once this run; prioritise levelling moves to trigger evolution)",
+            "card_1": "Ember New | a flame | my experience: never picked before | MY PLAN FOR THIS RUN WANTS THIS CARD | NEED EARLY ATTACK (I only have 1 attack and need wave-clearing DPS)",
+            "card_2": "Gust Nv.2 > 3 | stronger gust | my experience: never picked before | TOP PRIORITY: FINISH UPGRADING MY MAIN ATTACK (now Lv.3) TO TRIGGER EVOLUTION!",
+            "card_3": "Growl Nv.1 > 2 | lowers attack | my experience: never picked before | (0-damage support buff — do not prioritise over damaging attacks)",
+            "card_4": "Tackle New | a tackle | my experience: never picked before | NEED EARLY ATTACK (I only have 1 attack and need wave-clearing DPS)",
+            "card_5": "Speed Upgrade | raises speed | my experience: never picked before | MY JOURNAL SAYS THIS STAT PAIRS WITH MY EQUIPPED 'gust' FOR EVOLUTION (not picked yet)",
+            "reroll": "replace these cards with random new ones (uses 1 reroll)"
+          },
+          "instructions": "Choose the card that will make me strongest, judging only from the card text, my plan for this run, my beliefs and hunches, and what I have observed after picking cards before. Focus on finishing one damaging move's upgrades to trigger its evolution before spreading upgrades thin across other moves, and pick its paired stat once. [EARLY SURVIVAL: I have only 1 damaging attack. I urgently need a 2nd damaging attack to survive early enemy swarms before picking utility stats.]",
+          "type": "choice"
+        }
+      },
+      "state": {
+        "card_rules_i_discovered": [
+          "'gust evo' shows up after I upgrade/pick 'gust' 4x and pick 'speed' (fixture)",
+          "'ember evo' shows up after I upgrade/pick 'ember' 4x and pick 'stat1' (fixture)",
+          "'water evo' shows up after I upgrade/pick 'water' 4x and pick 'stat2' (fixture)",
+          "'vine evo' shows up after I upgrade/pick 'vine' 4x and pick 'stat3' (fixture)",
+          "'quick evo' shows up after I upgrade/pick 'quick' 4x and pick 'stat4' (fixture)"
+        ],
+        "game": "pokesurvivor",
+        "goal": "clear 31:00 by becoming strong enough to wipe dense waves and bosses",
+        "me": {
+          "cards_picked_so_far": [
+            "Power Upgrade"
+          ],
+          "hp_pct": 0.5,
+          "kills": 12,
+          "kills_per_min": 20,
+          "level": 4
+        },
+        "my_beliefs": [
+          "[hunch 0.99] hunch 0",
+          "[hunch 0.98] hunch 1",
+          "[hunch 0.97] hunch 2",
+          "[hunch 0.96] hunch 3",
+          "[hunch 0.95] hunch 4",
+          "[hunch 0.94] hunch 5"
+        ],
+        "my_lessons": [
+          "[0.90] lesson 0",
+          "[0.89] lesson 1",
+          "[0.88] lesson 2",
+          "[0.87] lesson 3",
+          "[0.86] lesson 4",
+          "[0.85] lesson 5"
+        ],
+        "my_moves_now": [
+          {
+            "evolved": false,
+            "id": "gust",
+            "lvl": 3,
+            "name": "Gust",
+            "role": "attack"
+          },
+          {
+            "evolved": false,
+            "id": "growl",
+            "lvl": 1,
+            "name": "Growl",
+            "role": "0-damage support buff"
+          }
+        ],
+        "my_plan_this_run": {
+          "build_goal": "chase gust",
+          "question": "What happens when I go to the shrine?"
+        },
+        "time_seconds": 42
+      },
+      "timeout": 4.0
+    }
+  ],
+  "handle_meta": [
+    {
+      "questions": {
+        "partner": {
+          "criteria": {
+            "dex_4": "Charmander - shown stats hp 39 atk 52 spd 65, stars 2; my results: {'runs': 1, 'time_sum': 90.0, 'best': 90.0}",
+            "dex_7": "Squirtle - shown stats hp 44 atk 48 spd 43, stars 1; my results: never used",
+            "keep": "keep Bulbasaur (my results: {'runs': 2, 'time_sum': 180.0, 'best': 120.0})"
+          },
+          "instructions": "Choose my partner for the next run using only the shown stats and my own results with each partner.",
+          "type": "choice"
+        }
+      },
+      "state": {
+        "recent_runs": [
+          {
+            "boss_kills": 0,
+            "cause": "enemy:Rattata",
+            "diagnosis": "enemy:Rattata",
+            "kills": 30,
+            "level": 3,
+            "partner": "Charmander",
+            "phase": "early",
+            "policy": {
+              "aggression": 1.5
+            },
+            "power_score": 103,
+            "run": 3,
+            "run_id": "fix-3",
+            "time": 33.0,
+            "ts": 3.0,
+            "verdict": "unclear",
+            "why": "fixture"
+          },
+          {
+            "boss_kills": 0,
+            "cause": "enemy:Rattata",
+            "diagnosis": "enemy:Rattata",
+            "kills": 40,
+            "level": 4,
+            "partner": "Charmander",
+            "phase": "early",
+            "policy": {
+              "aggression": 1.5
+            },
+            "power_score": 104,
+            "run": 4,
+            "run_id": "fix-4",
+            "time": 34.0,
+            "ts": 4.0,
+            "verdict": "unclear",
+            "why": "fixture"
+          },
+          {
+            "boss_kills": 0,
+            "cause": "enemy:Rattata",
+            "diagnosis": "enemy:Rattata",
+            "kills": 50,
+            "level": 5,
+            "partner": "Charmander",
+            "phase": "early",
+            "policy": {
+              "aggression": 1.5
+            },
+            "power_score": 105,
+            "run": 5,
+            "run_id": "fix-5",
+            "time": 35.0,
+            "ts": 5.0,
+            "verdict": "unclear",
+            "why": "fixture"
+          },
+          {
+            "boss_kills": 0,
+            "cause": "enemy:Rattata",
+            "diagnosis": "enemy:Rattata",
+            "kills": 60,
+            "level": 6,
+            "partner": "Charmander",
+            "phase": "early",
+            "policy": {
+              "aggression": 1.5
+            },
+            "power_score": 106,
+            "run": 6,
+            "run_id": "fix-6",
+            "time": 36.0,
+            "ts": 6.0,
+            "verdict": "unclear",
+            "why": "fixture"
+          },
+          {
+            "boss_kills": 0,
+            "cause": "enemy:Rattata",
+            "diagnosis": "enemy:Rattata",
+            "kills": 70,
+            "level": 7,
+            "partner": "Charmander",
+            "phase": "early",
+            "policy": {
+              "aggression": 1.5
+            },
+            "power_score": 107,
+            "run": 7,
+            "run_id": "fix-7",
+            "time": 37.0,
+            "ts": 7.0,
+            "verdict": "unclear",
+            "why": "fixture"
+          },
+          {
+            "boss_kills": 0,
+            "cause": "enemy:Rattata",
+            "diagnosis": "enemy:Rattata",
+            "kills": 80,
+            "level": 8,
+            "partner": "Bulbasaur",
+            "phase": "early",
+            "policy": {
+              "aggression": 1.5
+            },
+            "power_score": 108,
+            "run": 8,
+            "run_id": "fix-8",
+            "time": 38.0,
+            "ts": 8.0,
+            "verdict": "unclear",
+            "why": "fixture"
+          }
+        ]
+      },
+      "timeout": 4.0
+    },
+    {
+      "questions": {
+        "gacha": {
+          "criteria": {
+            "keep": "keep them for later",
+            "pull": "use the tickets now"
+          },
+          "instructions": "I have 2 tickets {'t1': 2, 't10': 0}. The menu has a gacha that uses them. I have pulled 1 times before and gained these partners from it: ['Pidgey']. I own 3 partners and have only ever played ['Bulbasaur', 'Charmander']. Use the tickets now?",
+          "type": "choice"
+        }
+      },
+      "state": {
+        "my_partner_results": {
+          "Bulbasaur": {
+            "best": 120.0,
+            "runs": 2,
+            "time_sum": 180.0
+          },
+          "Charmander": {
+            "best": 90.0,
+            "runs": 1,
+            "time_sum": 90.0
+          }
+        },
+        "partners_owned": 3
+      },
+      "timeout": 3.0
+    }
+  ],
+  "handle_opportunity": [
+    {
+      "questions": {
+        "engage": {
+          "criteria": {
+            "engage": "go to it / touch it now",
+            "skip": "leave it for now"
+          },
+          "instructions": "Should I go to this shrine now? Decide from my own experience with it, my curiosity, my question for this run, and the risk right now.",
+          "type": "choice"
+        }
+      },
+      "state": {
+        "goal": "clear 31:00 by becoming strong enough to wipe dense waves and bosses",
+        "is_this_my_question_this_run": false,
+        "my_experience_with_it": "object 'shrine': never investigated",
+        "my_policy_curiosity": "on",
+        "my_question_this_run": "What happens when I go to the shrine?",
+        "now": {
+          "distance_px": 40,
+          "hp_pct": 0.7,
+          "level": 4,
+          "things_near_me": 2,
+          "time": 90
+        },
+        "recent_on_screen_text": [
+          "a sign"
+        ],
+        "thing": "shrine",
+        "what_i_know": [
+          "danger enemy:mob5: touching it costs ~27% max HP/s, at 0-15px 2%/s (observed 20s)",
+          "danger enemy:mob4: touching it costs ~23% max HP/s, at 0-15px 2%/s (observed 20s)",
+          "danger enemy:mob3: touching it costs ~18% max HP/s, at 0-15px 2%/s (observed 20s)",
+          "danger enemy:mob2: touching it costs ~14% max HP/s, at 0-15px 2%/s (observed 20s)",
+          "danger enemy:mob1: touching it costs ~9% max HP/s, at 0-15px 2%/s (observed 20s)",
+          "object 'object:chest0': never investigated",
+          "object 'object:chest1': never investigated",
+          "object 'object:chest2': never investigated"
+        ]
+      },
+      "timeout": 2.5
+    }
+  ],
+  "handle_run_end": [
+    {
+      "questions": {
+        "failure_diagnosis": {
+          "criteria": {
+            "area_telegraphs": "ground markings going off",
+            "contact_damage": "touching enemies directly",
+            "overwhelmed_by_numbers": "swarmed by too many enemies",
+            "projectiles": "things flying at me",
+            "terrain": "terrain / liquid hazards",
+            "too_weak_insufficient_kills": "my offensive power fell behind the enemy swarm"
+          },
+          "instructions": "From what I observed, what ended this run?",
+          "type": "choice"
+        },
+        "focus_answer": {
+          "criteria": {
+            "answered": "yes - the evidence answers it well enough",
+            "could_not_test": "I did not really get to test it this run",
+            "keep_investigating": "partly - I need more runs to be sure"
+          },
+          "instructions": "My question this run was: 'What happens when I go to the shrine?'. Does the evidence answer it?",
+          "type": "choice"
+        },
+        "stance_verdict": {
+          "criteria": {
+            "helped": "it helped",
+            "hurt": "it made things worse",
+            "unclear": "too noisy to tell"
+          },
+          "instructions": "Compared with my recent runs, did this run's play style and build help me get stronger and last longer?",
+          "type": "choice"
+        }
+      },
+      "state": {
+        "evidence_for_my_question": [
+          "I did not reach it this run",
+          "all-time: object 'object:shrine': never investigated"
+        ],
+        "goal": "clear 31:00; become strong enough to wipe dense waves and bosses",
+        "my_beliefs": [
+          "[hunch 0.99] hunch 0",
+          "[hunch 0.98] hunch 1",
+          "[hunch 0.97] hunch 2",
+          "[hunch 0.96] hunch 3",
+          "[hunch 0.95] hunch 4",
+          "[hunch 0.94] hunch 5"
+        ],
+        "my_question_this_run": "What happens when I go to the shrine?",
+        "recent_runs": [
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 30,
+            "level": 3,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 103,
+            "run": 3,
+            "survived": "00:33"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 40,
+            "level": 4,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 104,
+            "run": 4,
+            "survived": "00:34"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 50,
+            "level": 5,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 105,
+            "run": 5,
+            "survived": "00:35"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 60,
+            "level": 6,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 106,
+            "run": 6,
+            "survived": "00:36"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 70,
+            "level": 7,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 107,
+            "run": 7,
+            "survived": "00:37"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 80,
+            "level": 8,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 108,
+            "run": 8,
+            "survived": "00:38"
+          }
+        ],
+        "this_run": {
+          "boss_kills": 0,
+          "build_goal": "chase gust",
+          "damage_by_source": {
+            "enemy:Rattata": 50
+          },
+          "hurt_most_by": "enemy:Rattata",
+          "kills": 33,
+          "level": 7,
+          "on_screen_text": [
+            "hello"
+          ],
+          "partner": "Bulbasaur",
+          "play_style": "aggressive_farmer",
+          "power_score": 277.0,
+          "survived": "01:35"
+        }
+      },
+      "timeout": 6.0
+    },
+    {
+      "questions": {
+        "build_goal": {
+          "criteria": {
+            "free": "no fixed build: pick whatever card looks strongest each time (my record: 1 runs, avg survived 02:00, avg power 400, avg 0.0 evolutions)",
+            "repeat_best": "repeat the cards of my best run with Bulbasaur: gust, power (my record: never tried)"
+          },
+          "instructions": "What should my card-picking plan be next run?",
+          "type": "choice"
+        },
+        "focus_question": {
+          "criteria": {
+            "q1": "The screen said \"hello\". What does it mean for me? (why I ask: read in run 9; chased 0x before)",
+            "q2": "How do I stop Rattata from hurting me so much? (why I ask: hurt me most in run 9; chased 0x before)",
+            "q_partner": "What is it like to play as Squirtle? (why I ask: I own it but never played it; chased 0x before)",
+            "q_shrine": "What happens when I go to the shrine? (why I ask: seen once; chased 1x before; testable in 1/3 past chases of this topic)"
+          },
+          "instructions": "Like a curious player: which ONE question do I most want to answer next run?",
+          "type": "choice"
+        },
+        "partner": {
+          "criteria": {
+            "dex_4": "Charmander (shown stats hp 39 atk 52 spd 65, stars 2; my runs with it: 1, avg 01:30, best 01:30)",
+            "dex_7": "Squirtle (shown stats hp 44 atk 48 spd 43, stars 1; my runs with it: 0)",
+            "keep": "keep Bulbasaur (shown stats hp 45 atk 49 spd 45, stars 1; my runs with it: 3, avg 01:31, best 02:00)"
+          },
+          "instructions": "Which partner should I play next run to survive longest toward 31:00 (or to test my partner question if I chose one)? Judge from shown stats and my average/best survival records.",
+          "type": "choice"
+        },
+        "stance": {
+          "criteria": {
+            "aggressive_farmer": "stay close to enemy packs and kill as fast as possible to level up quickly (my record: 3 runs, avg score 192)",
+            "boss_hunter": "fight big enemies head-on, circle them and keep my damage on them (my record: never tried)",
+            "careful_kiter": "keep a wide distance and dodge everything, accepting slower kills (my record: never tried)",
+            "treasure_hunter": "roam the whole map, open chests, touch shrines and portals, look at new things (my record: never tried)"
+          },
+          "instructions": "Which play style should I use next run?",
+          "type": "choice"
+        }
+      },
+      "state": {
+        "goal": "clear 31:00; I learn the game like a player - by asking questions and testing them",
+        "last_diary": [
+          "diary 3",
+          "diary 4",
+          "第 9 局 · Bulbasaur · 激進刷怪：問題「What happens when I go to the shrine?」→ 今局試唔到。撐到 01:35 Lv7，33 殺，最傷我嘅係 enemy:Rattata。 新問題 2 條。"
+        ],
+        "my_beliefs": [
+          "[hunch 0.99] hunch 0",
+          "[hunch 0.98] hunch 1",
+          "[hunch 0.97] hunch 2",
+          "[hunch 0.96] hunch 3",
+          "[hunch 0.95] hunch 4",
+          "[hunch 0.94] hunch 5",
+          "[hunch 0.93] hunch 6",
+          "[hunch 0.92] hunch 7"
+        ],
+        "recent_runs": [
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 40,
+            "level": 4,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 104,
+            "run": 4,
+            "survived": "00:34"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 50,
+            "level": 5,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 105,
+            "run": 5,
+            "survived": "00:35"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 60,
+            "level": 6,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 106,
+            "run": 6,
+            "survived": "00:36"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 70,
+            "level": 7,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 107,
+            "run": 7,
+            "survived": "00:37"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 80,
+            "level": 8,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 108,
+            "run": 8,
+            "survived": "00:38"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 33,
+            "level": 7,
+            "policy": {
+              "aggression": 1.5,
+              "combat_range": 110,
+              "explore": 1,
+              "fear": 1.0,
+              "greed": 1.8,
+              "keep_distance": 0,
+              "orbit": 1.3,
+              "roam": 1,
+              "rotate_s": 2,
+              "telegraph_fear": 1.2,
+              "w_bonds": 25,
+              "w_coins": 0.3,
+              "w_hp": 35,
+              "w_level": 40,
+              "w_tickets": 15,
+              "w_xp": 30
+            },
+            "power": 277.0,
+            "run": 9,
+            "survived": "01:35"
+          }
+        ]
+      },
+      "timeout": 6.0
+    }
+  ],
+  "handle_run_start": [],
+  "handle_tactics": [],
+  "handle_upgrade": [
+    {
+      "questions": {
+        "upgrade": {
+          "criteria": {
+            "save": "save coins for later (I already chose to save 1 times in a row; coins do nothing until spent)",
+            "upg_a": "Vitality: more hp (level 1/5, cost 50); runs after buying: 2, avg survival change 15",
+            "upg_b": "Might: more atk (level 0/5, cost 40); never bought - I don't know what it really does for me"
+          },
+          "instructions": "Pick one permanent upgrade to buy now (or save), judging only from the description and my results.",
+          "type": "choice"
+        }
+      },
+      "state": {
+        "coins": 100,
+        "lessons": [
+          "[0.90] lesson 0",
+          "[0.89] lesson 1",
+          "[0.88] lesson 2",
+          "[0.87] lesson 3",
+          "[0.86] lesson 4"
+        ],
+        "recent_runs": [
+          {
+            "boss_kills": 0,
+            "cause": "enemy:Rattata",
+            "diagnosis": "enemy:Rattata",
+            "kills": 30,
+            "level": 3,
+            "partner": "Charmander",
+            "phase": "early",
+            "policy": {
+              "aggression": 1.5
+            },
+            "power_score": 103,
+            "run": 3,
+            "run_id": "fix-3",
+            "time": 33.0,
+            "ts": 3.0,
+            "verdict": "unclear",
+            "why": "fixture"
+          },
+          {
+            "boss_kills": 0,
+            "cause": "enemy:Rattata",
+            "diagnosis": "enemy:Rattata",
+            "kills": 40,
+            "level": 4,
+            "partner": "Charmander",
+            "phase": "early",
+            "policy": {
+              "aggression": 1.5
+            },
+            "power_score": 104,
+            "run": 4,
+            "run_id": "fix-4",
+            "time": 34.0,
+            "ts": 4.0,
+            "verdict": "unclear",
+            "why": "fixture"
+          },
+          {
+            "boss_kills": 0,
+            "cause": "enemy:Rattata",
+            "diagnosis": "enemy:Rattata",
+            "kills": 50,
+            "level": 5,
+            "partner": "Charmander",
+            "phase": "early",
+            "policy": {
+              "aggression": 1.5
+            },
+            "power_score": 105,
+            "run": 5,
+            "run_id": "fix-5",
+            "time": 35.0,
+            "ts": 5.0,
+            "verdict": "unclear",
+            "why": "fixture"
+          },
+          {
+            "boss_kills": 0,
+            "cause": "enemy:Rattata",
+            "diagnosis": "enemy:Rattata",
+            "kills": 60,
+            "level": 6,
+            "partner": "Charmander",
+            "phase": "early",
+            "policy": {
+              "aggression": 1.5
+            },
+            "power_score": 106,
+            "run": 6,
+            "run_id": "fix-6",
+            "time": 36.0,
+            "ts": 6.0,
+            "verdict": "unclear",
+            "why": "fixture"
+          },
+          {
+            "boss_kills": 0,
+            "cause": "enemy:Rattata",
+            "diagnosis": "enemy:Rattata",
+            "kills": 70,
+            "level": 7,
+            "partner": "Charmander",
+            "phase": "early",
+            "policy": {
+              "aggression": 1.5
+            },
+            "power_score": 107,
+            "run": 7,
+            "run_id": "fix-7",
+            "time": 37.0,
+            "ts": 7.0,
+            "verdict": "unclear",
+            "why": "fixture"
+          },
+          {
+            "boss_kills": 0,
+            "cause": "enemy:Rattata",
+            "diagnosis": "enemy:Rattata",
+            "kills": 80,
+            "level": 8,
+            "partner": "Bulbasaur",
+            "phase": "early",
+            "policy": {
+              "aggression": 1.5
+            },
+            "power_score": 108,
+            "run": 8,
+            "run_id": "fix-8",
+            "time": 38.0,
+            "ts": 8.0,
+            "verdict": "unclear",
+            "why": "fixture"
+          }
+        ]
+      },
+      "timeout": 4.0
+    }
+  ],
+  "plan_next": [
+    {
+      "questions": {
+        "build_goal": {
+          "criteria": {
+            "combo_multi_evo": "dual evolution build: chase 'gust' then 'ember' for late-game wave wipe (my record: never tried)",
+            "free": "no fixed build: pick whatever card looks strongest each time (my record: 1 runs, avg survived 02:00, avg power 400, avg 0.0 evolutions)",
+            "repeat_best": "repeat the cards of my best run with Bulbasaur: gust, power (my record: never tried)",
+            "rule_c0": "chase 'gust': pick 'gust' at least 4x and pick 'speed' as early as I can (my records: fixture) (my record: never tried)",
+            "rule_c1": "chase 'ember': pick 'ember' at least 4x and pick 'stat1' as early as I can (my records: fixture) (my record: never tried)",
+            "rule_c2": "chase 'water': pick 'water' at least 4x and pick 'stat2' as early as I can (my records: fixture) (my record: never tried)",
+            "rule_c3": "chase 'vine': pick 'vine' at least 4x and pick 'stat3' as early as I can (my records: fixture) (my record: never tried)",
+            "rule_c4": "chase 'quick': pick 'quick' at least 4x and pick 'stat4' as early as I can (my records: fixture) (my record: never tried)",
+            "rule_c5": "chase 'scratch': pick 'scratch' at least 4x and pick 'stat5' as early as I can (my records: fixture) (my record: never tried)"
+          },
+          "instructions": "What should my card-picking plan be next run?",
+          "type": "choice"
+        },
+        "focus_question": {
+          "criteria": {
+            "q_partner": "What is it like to play as Squirtle? (why I ask: I own it but never played it; chased 0x before)",
+            "q_shrine": "What happens when I go to the shrine? (why I ask: seen once; chased 1x before; testable in 1/2 past chases of this topic)"
+          },
+          "instructions": "Like a curious player: which ONE question do I most want to answer next run?",
+          "type": "choice"
+        },
+        "partner": {
+          "criteria": {
+            "dex_4": "Charmander (shown stats hp 39 atk 52 spd 65, stars 2; my runs with it: 1, avg 01:30, best 01:30)",
+            "dex_7": "Squirtle (shown stats hp 44 atk 48 spd 43, stars 1; my runs with it: 0)",
+            "keep": "keep Bulbasaur (shown stats hp 45 atk 49 spd 45, stars 1; my runs with it: 2, avg 01:30, best 02:00)"
+          },
+          "instructions": "Which partner should I play next run to survive longest toward 31:00 (or to test my partner question if I chose one)? Judge from shown stats and my average/best survival records.",
+          "type": "choice"
+        },
+        "stance": {
+          "criteria": {
+            "aggressive_farmer": "stay close to enemy packs and kill as fast as possible to level up quickly (my record: 2 runs, avg score 150)",
+            "boss_hunter": "fight big enemies head-on, circle them and keep my damage on them (my record: never tried)",
+            "careful_kiter": "keep a wide distance and dodge everything, accepting slower kills (my record: never tried)",
+            "treasure_hunter": "roam the whole map, open chests, touch shrines and portals, look at new things (my record: never tried)"
+          },
+          "instructions": "Which play style should I use next run?",
+          "type": "choice"
+        }
+      },
+      "state": {
+        "goal": "clear 31:00; I learn the game like a player - by asking questions and testing them",
+        "last_diary": [
+          "diary 2",
+          "diary 3",
+          "diary 4"
+        ],
+        "my_beliefs": [
+          "[hunch 0.99] hunch 0",
+          "[hunch 0.98] hunch 1",
+          "[hunch 0.97] hunch 2",
+          "[hunch 0.96] hunch 3",
+          "[hunch 0.95] hunch 4",
+          "[hunch 0.94] hunch 5",
+          "[hunch 0.93] hunch 6",
+          "[hunch 0.92] hunch 7"
+        ],
+        "recent_runs": [
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 30,
+            "level": 3,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 103,
+            "run": 3,
+            "survived": "00:33"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 40,
+            "level": 4,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 104,
+            "run": 4,
+            "survived": "00:34"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 50,
+            "level": 5,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 105,
+            "run": 5,
+            "survived": "00:35"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 60,
+            "level": 6,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 106,
+            "run": 6,
+            "survived": "00:36"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 70,
+            "level": 7,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 107,
+            "run": 7,
+            "survived": "00:37"
+          },
+          {
+            "boss_kills": 0,
+            "hurt_most_by": "enemy:Rattata",
+            "kills": 80,
+            "level": 8,
+            "policy": {
+              "aggression": 1.5
+            },
+            "power": 108,
+            "run": 8,
+            "survived": "00:38"
+          }
+        ]
+      },
+      "timeout": 6.0
+    }
+  ]
+}

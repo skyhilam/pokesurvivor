@@ -1,0 +1,11 @@
+{
+  "archive[/\\\\]assisted": "loads the archived source-assisted mode",
+  "game_kb_from_source": "loads facts extracted from the game's source code",
+  "Nv\\.8": "hard-codes the max move level / evolution rule",
+  "SPECIAL_PICKUP_VALUES": "hand-written pickup values instead of measured ones",
+  "missingByGen": "gacha banner heuristic copied from the source-assisted version",
+  "is_valuable": "hand-written 'this object is valuable' keyword list",
+  "SUPPORT_BUFF_MOVES": "hand-written list of which moves are buffs",
+  "KNOWN_BUFF_MOVES": "hand-written list of which moves are buffs",
+  "provide items, tickets, and evolutions": "prompt claims about what map objects give"
+}

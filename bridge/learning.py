@@ -22,6 +22,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from harness_tree import HarnessTree
+
 JevFn = Callable[[dict, dict, float], Optional[dict]]
 
 # knob: (min, max, default, kind, meaning)   kind: mul = multiplicative, add = additive, opt = discrete options
@@ -205,6 +207,28 @@ class LearningEngine:
         self.extra_context: Optional[Callable[[], list]] = None
         self.journal: Any = None   # Player Journal (bridge/journal.py); None = legacy knob-tuning mode
         self.kb = self._load()
+        self.harness = HarnessTree.load()
+
+    def reload_harness(self, directory: str | Path | None = None) -> HarnessTree:
+        """Read the component tree again. Import loads it once onto this engine."""
+        self.harness = HarnessTree.load(directory)
+        return self.harness
+
+    def harness_text(self, key: str, /, **fmt: Any) -> str:
+        # key is positional-only so a template may contain {key}.
+        return self.harness.text("tool_guidance", key, **fmt)
+
+    def memory_int(self, decision: str, field: str) -> int:
+        return int(self.harness.get(f"memory.decisions.{decision}.{field}"))
+
+    def jev_timeout(self, name: str) -> float:
+        timeouts = self.harness.get("plugins.jev_timeout_s") or {}
+        if name in timeouts:
+            return float(timeouts[name])
+        return float(timeouts["default"])
+
+    def decision_goal(self, decision: str) -> str:
+        return str(self.harness.get(f"tool_guidance.decisions.{decision}.state_goal"))
 
     # ------------------------------------------------------------------ persistence & upgrade
     def _load(self) -> dict[str, Any]:
@@ -463,31 +487,37 @@ class LearningEngine:
             return None
         kb = self.kb
         last = kb["runs"][-1]["policy"] if kb["runs"] and kb["runs"][-1].get("policy") else kb["best_policy"]
+        mem = self.harness.get("memory.decisions.jev_policy")
+        lower_t = self.harness_text("decisions.jev_policy.experiment.criteria_templates.lower")
+        higher_t = self.harness_text("decisions.jev_policy.experiment.criteria_templates.higher")
+        rotate_t = self.harness_text("decisions.jev_policy.experiment.criteria_templates.rotate_s")
+        explore = self.harness.get("tool_guidance.decisions.jev_policy.experiment.criteria")
         crit = {}
         active_knobs = ["aggression", "combat_range", "orbit", "greed", "fear", "telegraph_fear", "keep_distance"]
         for k in active_knobs:
-            lo, hi, d, kind, meaning = KNOBS[k]
-            crit[f"{k}:lower"] = f"lower '{k}' ({meaning})"
-            crit[f"{k}:higher"] = f"raise '{k}' ({meaning})"
+            _lo, _hi, _d, _kind, meaning = KNOBS[k]
+            crit[f"{k}:lower"] = lower_t.format(knob=k, meaning=meaning)
+            crit[f"{k}:higher"] = higher_t.format(knob=k, meaning=meaning)
         for v in ("0", "1", "2", "4"):
-            crit[f"rotate_s:{v}"] = f"set rotate_s={v} ({KNOBS['rotate_s'][4]})"
-        crit["explore:0"] = "stop investigating unknown things"
-        crit["explore:1"] = "investigate unknown things"
+            crit[f"rotate_s:{v}"] = rotate_t.format(value=v, meaning=KNOBS["rotate_s"][4])
+        crit["explore:0"] = explore["explore:0"]
+        crit["explore:1"] = explore["explore:1"]
         tested = self._change_evidence()
         lastrun = kb["runs"][-1] if kb["runs"] else None
+        brief = (self.extra_context() if self.extra_context else [])[:int(mem["world_brief"])]
         state = {
-            "goal": "clear 31:00 by becoming strong enough to wipe dense waves and bosses",
+            "goal": self.decision_goal("jev_policy"),
             "best_run": f"best score {kb.get('best_score', 0):.0f} ({_mmss(kb['best_time'])}, Lv{kb['best_level']}) with policy {self._policy_diff(kb['best_policy'])}",
             "last_run": f"{_mmss(lastrun['time'])}, Lv{lastrun.get('level')}, {lastrun.get('kills', 0)} kills, hurt most by {lastrun.get('cause')}" if lastrun else "none yet",
             "changes_tested_so_far": [f"{c}: {e['times_tested']} runs, avg {e['avg_survival_s']}s" for c, e in tested.items()],
             "changes_never_tested": [c for c in crit if c not in tested][:30],
-            "what_i_have_learned": ((self.extra_context() if self.extra_context else []) + self.top_lessons(4))[:8],
+            "what_i_have_learned": (brief + self.top_lessons(int(mem["lessons"])))[:int(mem["learned_cap"])],
         }
-        q = {"base": {"type": "choice", "instructions": "Start from which policy?",
-                      "criteria": {"best": "the policy of my highest-scoring run", "last": "the policy of my last run"}},
-             "experiment": {"type": "choice", "criteria": crit, "instructions":
-                            "Pick the ONE change to test in the next run to become stronger and survive longer."}}
-        res = self.jev(state, q, 8.0)
+        base = self.harness.get("tool_guidance.decisions.jev_policy.base")
+        experiment = self.harness.get("tool_guidance.decisions.jev_policy.experiment")
+        q = {"base": {"type": base["type"], "instructions": base["instructions"], "criteria": dict(base["criteria"])},
+             "experiment": {"type": experiment["type"], "criteria": crit, "instructions": experiment["instructions"]}}
+        res = self.jev(state, q, self.jev_timeout("jev_policy"))
         if not (res and "answers" in res):
             return None
         a = res["answers"]
@@ -564,7 +594,7 @@ class LearningEngine:
                 del self.kb["pending"][rid]
         self.save()
         out = {"run_id": run_id, "run_number": self.kb["total_runs"] + 1, "policy": pol, "experiment": why,
-               "hypothesis": why, "lessons": self.top_lessons(5), "best_time": self.kb["best_time"],
+               "hypothesis": why, "lessons": self.top_lessons(self.memory_int("run_start", "lessons")), "best_time": self.kb["best_time"],
                "best_score": self.kb.get("best_score", 0), "source": src}
         if plan:
             out["plan"] = self.journal.brief(plan)
@@ -578,20 +608,18 @@ class LearningEngine:
         if not self.jev:
             return out
         state = {
-            "goal": "clear 31:00 by becoming strong enough to wipe dense waves and bosses",
+            "goal": self.decision_goal("checkpoint"),
             "time": _mmss(t),
             "me_now": {k: d.get(k) for k in ("level", "hp_pct", "kills", "enemies", "dmg_per_min")},
-            "my_lessons": self.top_lessons(4),
+            "my_lessons": self.top_lessons(self.memory_int("checkpoint", "lessons")),
         }
-        q = {
-            "aggression_now": {"type": "choice", "instructions": "For the next minute, should I push closer into combat range to kill enemies faster, or back off?",
-                               "criteria": {"lower": "back off / safer", "same": "maintain current attack distance", "higher": "push closer to kill faster"}},
-            "fear_now": {"type": "choice", "instructions": "For the next minute, steer away from dangerous contact...",
-                         "criteria": {"lower": "evade less", "same": "maintain evasion", "higher": "evade more"}},
-            "greed_now": {"type": "choice", "instructions": "For the next minute, sweep up XP gems and pickups...",
-                          "criteria": {"lower": "ignore distant gems", "same": "normal pickup greed", "higher": "sweep all XP aggressively"}},
-        }
-        res = self.jev(state, q, 3.5)
+
+        def _posture(name: str) -> dict[str, Any]:
+            spec = self.harness.get(f"tool_guidance.decisions.checkpoint.{name}")
+            return {"type": spec["type"], "instructions": spec["instructions"], "criteria": dict(spec["criteria"])}
+
+        q = {"aggression_now": _posture("aggression_now"), "fear_now": _posture("fear_now"), "greed_now": _posture("greed_now")}
+        res = self.jev(state, q, self.jev_timeout("checkpoint"))
         if res and "answers" in res:
             mult = {"lower": 0.75, "same": 1.0, "higher": 1.35}
             ag = self._sample(res["answers"].get("aggression_now", {})) or "same"
@@ -681,8 +709,9 @@ class LearningEngine:
             reflection = self.journal.reflect(rec, kb["total_runs"] + 1, score, trial)
         elif self.jev:
             prev = kb["runs"][-1] if kb["runs"] else None
+            mem = self.harness.get("memory.decisions.end_run_no_journal")
             state = {
-                "goal": "clear 31:00 by becoming strong enough to wipe dense waves and bosses",
+                "goal": self.decision_goal("end_run_no_journal"),
                 "this_run": {
                     "survived": _mmss(t), "level": level, "kills": kills, "boss_kills": boss_kills, "kills_per_min": kpm,
                     "power_score": score, "hurt_most_by": cause, "damage_by_source": rec.get("damage_sources"),
@@ -691,19 +720,16 @@ class LearningEngine:
                     "timeline_tail": tl[-6:], "on_screen_text": (rec.get("messages") or [])[-8:],
                 },
                 "previous_run": {"survived": _mmss(prev["time"]), "kills": prev.get("kills", 0), "power": prev.get("power_score", 0)} if prev else None,
-                "history": self.history_table(10),
-                "learned": self.extra_context() if self.extra_context else [],
+                "history": self.history_table(int(mem["history"])),
+                "learned": (self.extra_context() if self.extra_context else [])[:int(mem["world_brief"])],
             }
-            q = {
-                "failure_diagnosis": {"type": "choice", "instructions": "From what I observed, what ended this run?", "criteria": {
-                    "contact_damage": "touching enemies directly", "area_telegraphs": "ground markings going off",
-                    "projectiles": "things flying at me", "terrain": "terrain / liquid hazards",
-                    "overwhelmed_by_numbers": "swarmed by too many enemies",
-                    "too_weak_insufficient_kills": "my offensive power and kill rate fell behind the enemy swarm"}},
-                "policy_verdict": {"type": "choice", "instructions": "Compared with my previous runs, did this run's policy change help me become stronger and progress further?",
-                                   "criteria": {"helped": "it helped", "hurt": "it made things worse", "unclear": "too noisy to tell"}},
-            }
-            res = self.jev(state, q, 6.0)
+
+            def _end_q(name: str) -> dict[str, Any]:
+                spec = self.harness.get(f"tool_guidance.decisions.end_run_no_journal.{name}")
+                return {"type": spec["type"], "instructions": spec["instructions"], "criteria": dict(spec["criteria"])}
+
+            q = {"failure_diagnosis": _end_q("failure_diagnosis"), "policy_verdict": _end_q("policy_verdict")}
+            res = self.jev(state, q, self.jev_timeout("end_run_no_journal"))
             if res and "answers" in res:
                 a = res["answers"]
                 reflection = {
@@ -763,7 +789,7 @@ class LearningEngine:
             "status": "learned", "run": run_no, "lesson": lesson, "record": record, "diagnosis": reflection["diagnosis"],
             "verdict": reflection["verdict"], "decision": "new_best_power" if record else "recorded", "best_params": kb["best_policy"],
             "best_time_seconds": kb["best_time"], "best_score": kb.get("best_score", 0), "total_runs": run_no,
-            "lessons": self.top_lessons(5), "source": reflection["source"],
+            "lessons": self.top_lessons(self.memory_int("end_run_response", "lessons")), "source": reflection["source"],
         }
         if next_plan:
             out.update({"focus_verdict": reflection.get("focus_verdict"), "new_questions": reflection.get("new_questions", []),
