@@ -208,6 +208,8 @@ class LearningEngine:
         self.journal: Any = None   # Player Journal (bridge/journal.py); None = legacy knob-tuning mode
         self.kb = self._load()
         self.harness = HarnessTree.load()
+        # Set by harness_recursion while a candidate harness is probed: the next run keeps these knobs.
+        self.policy_pin: Optional[dict[str, Any]] = None
 
     def reload_harness(self, directory: str | Path | None = None) -> HarnessTree:
         """Read the component tree again. Import loads it once onto this engine."""
@@ -229,6 +231,17 @@ class LearningEngine:
 
     def decision_goal(self, decision: str) -> str:
         return str(self.harness.get(f"tool_guidance.decisions.{decision}.state_goal"))
+
+    def guardrails_text(self) -> str:
+        """guardrails.md without its leading 'inject:' marker line (injected only when harness.inject.guardrails is on)."""
+        text = self.harness.files.get("guardrails.md") or ""
+        lines = text.split("\n")
+        if lines and lines[0].startswith("inject:"):
+            lines = lines[1:]
+        return "\n".join(lines).strip()
+
+    def inject_guardrails(self) -> bool:
+        return bool(self.harness.get("harness.inject.guardrails"))
 
     # ------------------------------------------------------------------ persistence & upgrade
     def _load(self) -> dict[str, Any]:
@@ -585,6 +598,9 @@ class LearningEngine:
             pol, src = dict(plan["policy"]), f"plan:{plan.get('source')}"
             q = plan.get("question_text") or "no particular question"
             why = f"❓ {q} | 🎮 {plan.get('stance_label')} | 🃏 {plan.get('build_text')}"
+        elif self.policy_pin and isinstance(self.policy_pin.get("policy"), dict):
+            # A harness candidate is being probed: no new knob experiment this run.
+            pol, why, src = dict(self.policy_pin["policy"]), str(self.policy_pin.get("why") or "harness probe"), "harness_probe"
         else:
             pol, why, src = self._jev_policy() or self._fallback_policy()
         self.kb["pending"][run_id] = {"policy": pol, "why": why, "source": src, "started": time.time(),

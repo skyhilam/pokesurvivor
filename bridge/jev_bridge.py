@@ -8,6 +8,7 @@ with TypeSafe Jev (SystemOne) structured decision API.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -25,6 +26,7 @@ from learning import LearningEngine, canonical_card_key, combo_pair_index  # noq
 from opportunity import WorldModel  # noqa: E402
 from auto_iteration import AutoIterSupervisor  # noqa: E402
 from journal import Journal, bridge_build  # noqa: E402
+from harness_recursion import HarnessRecursion  # noqa: E402
 
 PORT = int(os.environ.get("JEV_BRIDGE_PORT", "8765"))
 API_URL = "https://api.typesafe.ai/v1/systemone"
@@ -70,6 +72,8 @@ def call_typesafe_jev(state: dict[str, Any], questions: dict[str, Any], timeout:
         timeout = float(ENGINE.harness.get("plugins.jev_timeout_s.default"))
     if not API_KEY:
         return None
+    if ENGINE.inject_guardrails():
+        state = {**state, "guardrails": ENGINE.guardrails_text()}
 
     body = {
         "model": DEFAULT_MODEL,
@@ -126,6 +130,9 @@ if not _np or (_np.get("focus_question") and _np["focus_question"] not in ENGINE
 ENGINE.journal.save()
 ENGINE.journal.write_markdown()
 AUTO_ITER = AutoIterSupervisor(LOG_DIR)
+# Harness² loop: JEV_HARNESS_RECURSION=0 turns it off (then the base tree is used for every run, as in PR1).
+RECURSION = HarnessRecursion(LOG_DIR, ENGINE)
+RECURSION.activate_next()
 
 
 def _card_key(c: dict[str, Any]) -> str:
@@ -417,6 +424,9 @@ def handle_run_start(data: dict[str, Any]) -> dict[str, Any]:
         res = ENGINE.start_run(data)
         res["world_model"] = OPP.snapshot()
         res["expected_bot_build"] = expected_bot_build()
+        harness_id = RECURSION.on_run_start(res["run_id"])
+        if harness_id:
+            res["harness_id"] = harness_id
     log_decision({"event": "run_start", **res})
     print(f"[Learning] ▶ Run #{res['run_number']} experiment={res['experiment']} ({res['source']}) :: {res['hypothesis']}")
     return res
@@ -442,15 +452,23 @@ def handle_run_end(data: dict[str, Any]) -> dict[str, Any]:
         if persist:
             OPP.record_partner_result(str(data.get("partner") or ""), float(data.get("time") or 0))
             OPP.merge(data.get("world_deltas") or {})
+        trial = copy.deepcopy(ENGINE.kb["pending"].get(str(data.get("run_id") or ""))) if persist else None
         res = ENGINE.end_run(data, persist=persist)
         if persist:
             OPP.update_upgrade_effects()
             AUTO_ITER.audit_and_tune(ENGINE.kb, ENGINE)
             ENGINE.save()
+            try:
+                harness_res = RECURSION.after_run(data, trial=trial, result=res)
+            except Exception as e:
+                print(f"[Harness] after_run failed: {e}", file=sys.stderr)
+                harness_res = {"status": "error", "error": str(e)}
+            if harness_res is not None:
+                res["harness"] = harness_res
         res["world_model"] = OPP.snapshot()
         res["expected_bot_build"] = expected_bot_build()
     log_decision({"event": "run_end", "dry_run": not persist, **{k: res.get(k) for k in
-                  ("run", "lesson", "decision", "verdict", "diagnosis", "source", "focus_verdict", "new_questions", "next_plan")}})
+                  ("run", "lesson", "decision", "verdict", "diagnosis", "source", "focus_verdict", "new_questions", "next_plan", "harness")}})
     print(f"[Learning] ■ {res['lesson']}")
     if res.get("next_plan"):
         np_ = res["next_plan"]
@@ -521,6 +539,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
         if self.path == "/health":
             self._reply({"status": "ok", "typesafe_key_present": bool(API_KEY), "model": DEFAULT_MODEL,
                          "expected_bot_build": expected_bot_build(),
+                         "harness": {"enabled": RECURSION.enabled, "active": RECURSION.active_id, "current": RECURSION.lib.get("current")},
                          "stats": STATS, "total_runs": ENGINE.kb["total_runs"], "best_time": ENGINE.kb["best_time"]})
         elif self.path in ("/memory", "/knowledge"):
             self._reply(ENGINE.summary())
@@ -532,6 +551,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self._reply(ENGINE.report_markdown().encode("utf-8"), "text/markdown; charset=utf-8")
         elif self.path == "/journal":
             self._reply(ENGINE.journal.data if ENGINE.journal else {})
+        elif self.path == "/harness":
+            self._reply(RECURSION.status())
+        elif self.path == "/harness/library":
+            self._reply(RECURSION.lib)
         else:
             self.send_response(404)
             self.end_headers()
