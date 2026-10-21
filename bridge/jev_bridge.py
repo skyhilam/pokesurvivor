@@ -65,7 +65,9 @@ def log_decision(entry: dict[str, Any]) -> None:
         print(f"[Bridge Log Error] {e}", file=sys.stderr)
 
 
-def call_typesafe_jev(state: dict[str, Any], questions: dict[str, Any], timeout: float = 6.0) -> dict[str, Any] | None:
+def call_typesafe_jev(state: dict[str, Any], questions: dict[str, Any], timeout: float | None = None) -> dict[str, Any] | None:
+    if timeout is None:
+        timeout = float(ENGINE.harness.get("plugins.jev_timeout_s.default"))
     if not API_KEY:
         return None
 
@@ -107,7 +109,13 @@ def call_typesafe_jev(state: dict[str, Any], questions: dict[str, Any], timeout:
 
 ENGINE = LearningEngine(LOG_DIR, jev=lambda s, q, t: call_typesafe_jev(s, q, timeout=t))
 OPP = WorldModel(ENGINE)
-ENGINE.extra_context = lambda: OPP.brief(10)
+
+
+def _world_brief() -> list:
+    return OPP.brief(int(ENGINE.harness.get("memory.shared.extra_context.k")))
+
+
+ENGINE.extra_context = _world_brief
 ENGINE.journal = Journal(LOG_DIR, ENGINE, OPP)
 ENGINE.journal.seed()
 ENGINE.journal.mine_card_rules()
@@ -156,35 +164,44 @@ def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
         for t in (data.get("picked_titles") or []):
             picked_keys.add(canonical_card_key({"title": t, "key": ""}))
 
+    shortcuts = ENGINE.harness.get("skills.handle_levelup.shortcuts")
+
     # 1. If a true EVOLUTION card is on screen, pick it immediately (highest empirical power spike)
-    for i, c in enumerate(cards):
-        ckey = canonical_card_key(c)
-        if c.get("type") == "evo" or ckey.startswith("evo:"):
-            return done({"action": "pick", "index": i, "card": c.get("title"), "source": "learned_evolution"})
+    if shortcuts["learned_evolution"]["enabled"]:
+        for i, c in enumerate(cards):
+            ckey = canonical_card_key(c)
+            if c.get("type") == "evo" or ckey.startswith("evo:"):
+                return done({"action": "pick", "index": i, "card": c.get("title"), "source": "learned_evolution"})
 
     # 2. If a card's on-screen title explicitly states "<Stat> Evolves <Move>" for one of our un-evolved moves, pick it!
-    for i, c in enumerate(cards):
-        hint = str(c.get("evolves_hint") or "").strip()
-        if hint:
-            hint_slug = re.sub(r"[^a-z0-9]+", "-", hint.lower()).strip("-")
-            if hint_slug in unevolved_ids or hint.lower() in unevolved_names:
-                return done({"action": "pick", "index": i, "card": c.get("title"), "source": "on_screen_evolves_hint"})
+    if shortcuts["on_screen_evolves_hint"]["enabled"]:
+        for i, c in enumerate(cards):
+            hint = str(c.get("evolves_hint") or "").strip()
+            if hint:
+                hint_slug = re.sub(r"[^a-z0-9]+", "-", hint.lower()).strip("-")
+                if hint_slug in unevolved_ids or hint.lower() in unevolved_names:
+                    return done({"action": "pick", "index": i, "card": c.get("title"), "source": "on_screen_evolves_hint"})
 
     # 3. A SUPPORTED combo my journal mined from my own runs can be completed by a card
     # on screen right now: take it (as advice alone, my history took it only ~1/3 of the time).
-    if ENGINE.journal:
+    if shortcuts["learned_combo_pair"]["enabled"] and ENGINE.journal:
         supported_conds = [b.get("cond") or {} for b in ENGINE.journal.card_rules(only_supported=True)]
         combo_i = combo_pair_index(cards, unevolved_ids, picked_keys, supported_conds)
         if combo_i is not None:
             return done({"action": "pick", "index": combo_i, "card": cards[combo_i].get("title"), "source": "learned_combo_pair"})
 
-    criteria = {f"card_{i}": f"{c.get('title')} | {c.get('desc', '')} | my experience: {ENGINE.card_hint(canonical_card_key(c))}"
-                for i, c in enumerate(cards)}
+    card_t = ENGINE.harness_text("decisions.handle_levelup.card_selection.criteria.card")
+    ann = ENGINE.harness.get("tool_guidance.decisions.handle_levelup.card_selection.annotations")
+    level_mem = ENGINE.harness.get("memory.decisions.handle_levelup")
+    criteria = {
+        f"card_{i}": card_t.format(title=c.get("title"), desc=c.get("desc", ""), experience=ENGINE.card_hint(canonical_card_key(c)))
+        for i, c in enumerate(cards)
+    }
     if rerolls > 0:
-        criteria["reroll"] = "replace these cards with random new ones (uses 1 reroll)"
+        criteria["reroll"] = ENGINE.harness_text("decisions.handle_levelup.card_selection.criteria.reroll")
     state = {
         "game": "pokesurvivor",
-        "goal": "clear 31:00 by becoming strong enough to wipe dense waves and bosses",
+        "goal": ENGINE.decision_goal("handle_levelup"),
         "time_seconds": round(game_time),
         "me": {
             "level": player.get("level"),
@@ -194,7 +211,7 @@ def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
             "cards_picked_so_far": data.get("picked_titles") or [],
         },
         "my_moves_now": my_moves,
-        "my_lessons": ENGINE.top_lessons(6),
+        "my_lessons": ENGINE.top_lessons(int(level_mem["lessons"])),
     }
     discovered_pairs: dict[str, str] = {}
     required_n: dict[str, int] = {}
@@ -202,8 +219,8 @@ def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
         plan = ENGINE.journal.data.get("next_plan") or {}
         prefer = set(plan.get("prefer") or [])
         state["my_plan_this_run"] = {"build_goal": plan.get("build_text"), "question": plan.get("question_text")}
-        state["my_beliefs"] = ENGINE.journal.top_beliefs(6)
-        state["card_rules_i_discovered"] = [b["claim"] for b in ENGINE.journal.card_rules(only_supported=True)][:5]
+        state["my_beliefs"] = ENGINE.journal.top_beliefs(int(level_mem["beliefs"]))
+        state["card_rules_i_discovered"] = [b["claim"] for b in ENGINE.journal.card_rules(only_supported=True)][:int(level_mem["card_rules"])]
         for b in ENGINE.journal.card_rules():
             if b.get("status") in ("supported", "testing"):
                 cond = b.get("cond") or {}
@@ -217,9 +234,9 @@ def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
             ckey = canonical_card_key(c)
             if c.get("key") in prefer or ckey in prefer:
                 if ckey.startswith("stat:") and ckey in picked_keys:
-                    criteria[f"card_{i}"] += " | (already picked this stat once this run; prioritise levelling moves to trigger evolution)"
+                    criteria[f"card_{i}"] += ann["already_picked_stat"]
                 else:
-                    criteria[f"card_{i}"] += " | MY PLAN FOR THIS RUN WANTS THIS CARD"
+                    criteria[f"card_{i}"] += ann["plan_wants_card"]
 
     # Identify highest-level un-evolved damaging attack that still needs upgrades toward evolution
     damaging_unevolved = {
@@ -233,34 +250,41 @@ def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
         if ckey.startswith("up:"):
             m_id = ckey.split(":", 1)[1]
             if m_id in in_run_buffs or ENGINE.is_zero_dmg_move(m_id):
-                criteria[f"card_{i}"] += " | (0-damage support buff — do not prioritise over damaging attacks)"
+                criteria[f"card_{i}"] += ann["zero_damage_buff"]
             elif m_id in unevolved_ids:
                 lvl = unevolved_ids[m_id]
                 if m_id == focus_evo_move and lvl >= 2:
-                    criteria[f"card_{i}"] += f" | TOP PRIORITY: FINISH UPGRADING MY MAIN ATTACK (now Lv.{lvl}) TO TRIGGER EVOLUTION!"
+                    criteria[f"card_{i}"] += ENGINE.harness_text(
+                        "decisions.handle_levelup.card_selection.annotations.top_priority_evolution", lvl=lvl)
                 else:
-                    criteria[f"card_{i}"] += f" | UPGRADES MY EQUIPPED ATTACK (now Lv.{lvl}) TOWARD EVOLUTION"
+                    criteria[f"card_{i}"] += ENGINE.harness_text(
+                        "decisions.handle_levelup.card_selection.annotations.upgrades_equipped_attack", lvl=lvl)
         elif ckey.startswith("stat:") and ckey not in picked_keys:
             for m_id in unevolved_ids:
                 if discovered_pairs.get(m_id) == ckey:
-                    criteria[f"card_{i}"] += f" | MY JOURNAL SAYS THIS STAT PAIRS WITH MY EQUIPPED '{m_id}' FOR EVOLUTION (not picked yet)"
+                    criteria[f"card_{i}"] += ENGINE.harness_text(
+                        "decisions.handle_levelup.card_selection.annotations.journal_stat_pair", m_id=m_id)
     damaging_moves = [m for m in my_moves if m.get("role") != "0-damage support buff" and not ENGINE.is_zero_dmg_move(str(m.get("id") or ""))]
-    need_early_attack = int(player.get("level") or 1) <= 5 and len(damaging_moves) < 2
+    early = shortcuts["need_early_attack"]
+    need_early_attack = (
+        bool(early["enabled"])
+        and int(player.get("level") or 1) <= int(early["max_level"])
+        and len(damaging_moves) < int(early["damaging_moves_below"])
+    )
     if need_early_attack:
         for i, c in enumerate(cards):
             ckey = canonical_card_key(c)
             m_id = ckey.split(":", 1)[1] if ":" in ckey else ckey
             if (ckey.startswith("new:") or c.get("type") == "new") and not ENGINE.is_zero_dmg_move(m_id):
-                criteria[f"card_{i}"] += " | NEED EARLY ATTACK (I only have 1 attack and need wave-clearing DPS)"
+                criteria[f"card_{i}"] += ann["need_early_attack"]
 
-    instructions = ("Choose the card that will make me strongest, judging only from the card text, my plan for this run, "
-                    "my beliefs and hunches, and what I have observed after picking cards before. "
-                    "Focus on finishing one damaging move's upgrades to trigger its evolution before spreading upgrades thin across other moves, and pick its paired stat once.")
+    spec = ENGINE.harness.get("tool_guidance.decisions.handle_levelup.card_selection")
+    instructions = spec["instructions"]
     if need_early_attack:
-        instructions += " [EARLY SURVIVAL: I have only 1 damaging attack. I urgently need a 2nd damaging attack to survive early enemy swarms before picking utility stats.]"
+        instructions += ENGINE.harness_text("decisions.handle_levelup.card_selection.instructions_early_survival")
 
-    q = {"card_selection": {"type": "choice", "criteria": criteria, "instructions": instructions}}
-    res = call_typesafe_jev(state, q, timeout=4.0)
+    q = {"card_selection": {"type": spec["type"], "criteria": criteria, "instructions": instructions}}
+    res = call_typesafe_jev(state, q, timeout=ENGINE.jev_timeout("handle_levelup"))
     if res and "answers" in res:
         a = res["answers"].get("card_selection", {})
         ch = a.get("choice") or LearningEngine._sample(a)
@@ -272,22 +296,27 @@ def handle_levelup(data: dict[str, Any]) -> dict[str, Any]:
                 return done({"action": "pick", "index": idx, "card": cards[idx].get("title"), "source": "jev",
                              "confidence": a.get("confidence"), "latency_ms": res.get("latency_ms", 0)})
 
+    weights = {
+        item["id"]: float(item["value"])
+        for item in ENGINE.harness.get("skills.handle_levelup.fallback_score.weights")
+    }
+
     def fallback_score(i: int) -> float:
         ckey = canonical_card_key(cards[i])
         val, seen_n, _, _ = ENGINE.card_value(ckey)
-        bonus = 15.0 if seen_n == 0 else 0.0
+        bonus = weights["unseen"] if seen_n == 0 else 0.0
         m_id = ckey.split(":", 1)[1] if ":" in ckey else ckey
         if m_id in in_run_buffs or ENGINE.is_zero_dmg_move(m_id):
-            bonus -= 25.0
+            bonus += weights["zero_damage"]
         if need_early_attack and (ckey.startswith("new:") or cards[i].get("type") == "new") and not ENGINE.is_zero_dmg_move(m_id):
-            bonus += 50.0
+            bonus += weights["early_attack"]
         if ckey.startswith("up:") and m_id in unevolved_ids and m_id not in in_run_buffs and not ENGINE.is_zero_dmg_move(m_id):
-            bonus += 40.0 + 12.0 * unevolved_ids[m_id]
+            bonus += weights["upgrade_base"] + weights["upgrade_per_level"] * unevolved_ids[m_id]
         if ckey.startswith("stat:"):
             if ckey in picked_keys:
-                bonus -= 20.0
+                bonus += weights["stat_repeat"]
             elif any(discovered_pairs.get(m) == ckey for m in unevolved_ids):
-                bonus += 35.0
+                bonus += weights["paired_stat"]
         return val + bonus
 
     best = max(range(len(cards)), key=fallback_score)
@@ -302,15 +331,19 @@ def handle_item(data: dict[str, Any]) -> dict[str, Any]:
     if isinstance(new, str):
         new = {"id": new, "title": new}
     game_time = data.get("time", 0)
+    item_spec = ENGINE.harness.get("tool_guidance.decisions.handle_item.item_decision")
     crit = {
-        "keep_current": f"keep {cur.get('title')}: {cur.get('desc', '')} | my experience: {ENGINE.card_hint('item:' + str(cur.get('id')))}",
-        "equip_new": f"take {new.get('title')}: {new.get('desc', '')} | my experience: {ENGINE.card_hint('item:' + str(new.get('id')))}",
+        "keep_current": item_spec["criteria"]["keep_current"].format(
+            title=cur.get("title"), desc=cur.get("desc", ""), experience=ENGINE.card_hint("item:" + str(cur.get("id")))),
+        "equip_new": item_spec["criteria"]["equip_new"].format(
+            title=new.get("title"), desc=new.get("desc", ""), experience=ENGINE.card_hint("item:" + str(new.get("id")))),
     }
     action, source = "keep", "experience_fallback"
-    res = call_typesafe_jev({"game": "pokesurvivor", "time": game_time, "my_lessons": ENGINE.top_lessons(4)},
-                            {"item_decision": {"type": "choice", "criteria": crit,
-                                               "instructions": "Keep my held item or swap it, judging only from the text and my experience."}},
-                            timeout=4.0)
+    res = call_typesafe_jev({"game": "pokesurvivor", "time": game_time,
+                             "my_lessons": ENGINE.top_lessons(ENGINE.memory_int("handle_item", "lessons"))},
+                            {"item_decision": {"type": item_spec["type"], "criteria": crit,
+                                               "instructions": item_spec["instructions"]}},
+                            timeout=ENGINE.jev_timeout("handle_item"))
     if res and "answers" in res:
         a = res["answers"].get("item_decision", {})
         ch = a.get("choice") or LearningEngine._sample(a)
@@ -336,8 +369,10 @@ def handle_bond(data: dict[str, Any]) -> dict[str, Any]:
         return {"action": "pick", "index": 0, "source": "fallback"}
 
     # Pair mode: choose first move to bond
+    bond = ENGINE.harness.get("tool_guidance.decisions.handle_bond.bond_pick")
+    move_t = bond["criteria"]["move"]
     criteria = {
-        f"move_{i}": f"Bond move {m.get('name', m.get('id', ''))} (Lvl {m.get('lvl', 1)})"
+        f"move_{i}": move_t.format(name=m.get("name", m.get("id", "")), lvl=m.get("lvl", 1))
         for i, m in enumerate(loose)
     }
     state = {
@@ -348,12 +383,12 @@ def handle_bond(data: dict[str, Any]) -> dict[str, Any]:
     }
     questions = {
         "bond_pick": {
-            "type": "choice",
-            "instructions": "Pick move to fuse into the concurrent multi-cast group.",
+            "type": bond["type"],
+            "instructions": bond["instructions"],
             "criteria": criteria,
         }
     }
-    jev_res = call_typesafe_jev(state, questions, timeout=4.0)
+    jev_res = call_typesafe_jev(state, questions, timeout=ENGINE.jev_timeout("handle_bond"))
     pick_idx = 0
     source = "fallback"
     if jev_res and "answers" in jev_res:

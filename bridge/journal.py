@@ -653,33 +653,36 @@ class Journal:
         out = {"diagnosis": str(rec.get("death_cause") or "unknown"), "verdict": "unclear", "focus_verdict": "no_focus", "source": "fallback"}
         jev = self.engine.jev
         if jev:
+            mem = self.engine.harness.get("memory.decisions.journal_reflect")
+
+            def _reflect_q(name: str) -> dict[str, Any]:
+                spec = self.engine.harness.get(f"tool_guidance.decisions.journal_reflect.{name}")
+                return {"type": spec["type"], "instructions": spec["instructions"], "criteria": dict(spec["criteria"])}
+
             state = {
-                "goal": "clear 31:00; become strong enough to wipe dense waves and bosses",
+                "goal": self.engine.decision_goal("journal_reflect"),
                 "this_run": {"survived": _mmss(float(rec.get("time") or 0)), "level": rec.get("level"), "kills": rec.get("kills", 0),
                              "boss_kills": rec.get("boss_kills", 0), "power_score": score, "partner": rec.get("partner"),
                              "hurt_most_by": rec.get("death_cause"), "damage_by_source": rec.get("damage_sources"),
                              "play_style": plan.get("stance"), "build_goal": plan.get("build_text"),
                              "on_screen_text": [m.get("text") if isinstance(m, dict) else m for m in (rec.get("messages") or [])[-6:]]},
-                "recent_runs": self.engine.history_table(6),
+                "recent_runs": self.engine.history_table(int(mem["recent_runs"])),
                 "my_question_this_run": q["ask"] if q else None,
                 "evidence_for_my_question": ev,
-                "my_beliefs": self.top_beliefs(6),
+                "my_beliefs": self.top_beliefs(int(mem["beliefs"])),
             }
             qs: dict[str, Any] = {
-                "failure_diagnosis": {"type": "choice", "instructions": "From what I observed, what ended this run?", "criteria": {
-                    "contact_damage": "touching enemies directly", "area_telegraphs": "ground markings going off",
-                    "projectiles": "things flying at me", "terrain": "terrain / liquid hazards",
-                    "overwhelmed_by_numbers": "swarmed by too many enemies",
-                    "too_weak_insufficient_kills": "my offensive power fell behind the enemy swarm"}},
-                "stance_verdict": {"type": "choice", "instructions": "Compared with my recent runs, did this run's play style and build help me get stronger and last longer?",
-                                   "criteria": {"helped": "it helped", "hurt": "it made things worse", "unclear": "too noisy to tell"}},
+                "failure_diagnosis": _reflect_q("failure_diagnosis"),
+                "stance_verdict": _reflect_q("stance_verdict"),
             }
             if q:
-                qs["focus_answer"] = {"type": "choice", "instructions": f"My question this run was: '{q['ask']}'. Does the evidence answer it?",
-                                      "criteria": {"answered": "yes - the evidence answers it well enough",
-                                                   "keep_investigating": "partly - I need more runs to be sure",
-                                                   "could_not_test": "I did not really get to test it this run"}}
-            res = jev(state, qs, 6.0)
+                focus = self.engine.harness.get("tool_guidance.decisions.journal_reflect.focus_answer")
+                qs["focus_answer"] = {
+                    "type": focus["type"],
+                    "instructions": self.engine.harness_text("decisions.journal_reflect.focus_answer.instructions", ask=q["ask"]),
+                    "criteria": dict(focus["criteria"]),
+                }
+            res = jev(state, qs, self.engine.jev_timeout("journal_reflect"))
             if res and "answers" in res:
                 a = res["answers"]
                 out.update({"diagnosis": a.get("failure_diagnosis", {}).get("choice") or out["diagnosis"],
@@ -877,33 +880,62 @@ class Journal:
         source = "fallback"
         jev = self.engine.jev
         if use_jev and jev:
+            stance_t = self.engine.harness.get("tool_guidance.decisions.plan_next.stance.criteria_templates")
+            stance_spec = self.engine.harness.get("tool_guidance.decisions.plan_next.stance")
             stance_crit = {}
             for s, v in STANCES.items():
                 sst = stats.get(s)
-                rec_txt = f"{sst['n']} runs, avg score {sst['score_sum'] / sst['n']:.0f}" if sst and sst.get("n") else "never tried"
-                stance_crit[s] = f"{v['desc']} (my record: {rec_txt})"
+                if sst and sst.get("n"):
+                    rec_txt = stance_t["record"].format(n=sst["n"], avg_score=f"{sst['score_sum'] / sst['n']:.0f}")
+                else:
+                    rec_txt = stance_t["never"]
+                stance_crit[s] = stance_t["option"].format(desc=v["desc"], record=rec_txt)
             records = self._build_records()
+            build_t = self.engine.harness.get("tool_guidance.decisions.plan_next.build_goal.criteria_templates")
+            build_spec = self.engine.harness.get("tool_guidance.decisions.plan_next.build_goal")
             build_crit = {}
             for bid2, bv in builds.items():
                 r = records.get(bid2)
-                rec_txt = (f"{r['n']} runs, avg survived {_mmss(r['time'] / r['n'])}, avg power {r['power'] / r['n']:.0f}, "
-                           f"avg {r['evo'] / r['n']:.1f} evolutions") if r and r["n"] else "never tried"
-                build_crit[bid2] = f"{bv['text']} (my record: {rec_txt})"
+                if r and r["n"]:
+                    rec_txt = build_t["record"].format(
+                        n=r["n"], survived=_mmss(r["time"] / r["n"]),
+                        power=f"{r['power'] / r['n']:.0f}", evolutions=f"{r['evo'] / r['n']:.1f}",
+                    )
+                else:
+                    rec_txt = build_t["never"]
+                build_crit[bid2] = build_t["option"].format(text=bv["text"], record=rec_txt)
             qs: dict[str, Any] = {
-                "build_goal": {"type": "choice", "instructions": "What should my card-picking plan be next run?",
-                               "criteria": build_crit},
-                "stance": {"type": "choice", "instructions": "Which play style should I use next run?", "criteria": stance_crit},
+                "build_goal": {"type": build_spec["type"], "instructions": build_spec["instructions"], "criteria": build_crit},
+                "stance": {"type": stance_spec["type"], "instructions": stance_spec["instructions"], "criteria": stance_crit},
             }
             if opens:
-                qs["focus_question"] = {"type": "choice", "instructions": "Like a curious player: which ONE question do I most want to answer next run?",
-                                        "criteria": {qid: f"{q['ask']} (why I ask: {q['origin']}; {self._chase_history_text(q)})" for qid, q in opens}}
+                focus_spec = self.engine.harness.get("tool_guidance.decisions.plan_next.focus_question")
+                focus_t = focus_spec["criteria_templates"]["option"]
+                qs["focus_question"] = {
+                    "type": focus_spec["type"],
+                    "instructions": focus_spec["instructions"],
+                    "criteria": {
+                        qid: focus_t.format(ask=q["ask"], origin=q["origin"], chase_history=self._chase_history_text(q))
+                        for qid, q in opens
+                    },
+                }
             if len(owned) > 1:
+                pt = self.engine.harness.get("tool_guidance.decisions.plan_next.partner.criteria_templates")
                 u_cur = used.get(cur.get("name")) if cur else None
-                cur_avg = _mmss(u_cur["time_sum"] / u_cur["runs"]) if u_cur and u_cur.get("runs") else ""
-                pc = {"keep": (f"keep {cur.get('name')} (shown stats hp {cur.get('hp')} atk {cur.get('atk')} spd {cur.get('spd')}, "
-                               f"stars {cur.get('rarity')}; my runs with it: {u_cur['runs'] if u_cur else 0}"
-                               f"{', avg ' + cur_avg + ', best ' + _mmss(u_cur['best']) if u_cur and u_cur.get('runs') else ''})")
-                      if cur else "keep my current partner"}
+                if not cur:
+                    pc = {"keep": pt["keep_no_current"]}
+                else:
+                    fields = {
+                        "name": cur.get("name"), "hp": cur.get("hp"), "atk": cur.get("atk"),
+                        "spd": cur.get("spd"), "rarity": cur.get("rarity"),
+                        "runs": u_cur["runs"] if u_cur else 0,
+                    }
+                    if u_cur and u_cur.get("runs"):
+                        fields["avg"] = _mmss(u_cur["time_sum"] / u_cur["runs"])
+                        fields["best"] = _mmss(u_cur["best"])
+                        pc = {"keep": pt["keep_with_runs"].format(**fields)}
+                    else:
+                        pc = {"keep": pt["keep_without_runs"].format(**fields)}
                 asked = {q["about"].split(":", 1)[1] for q in self.data["questions"].values()
                          if q["kind"] == "partner" and q["status"] != "answered"}
                 shortlist = [o for o in owned if str(o.get("dex")) in asked] + \
@@ -913,15 +945,25 @@ class Journal:
                     if (cur and o.get("dex") == cur.get("dex")) or f"dex_{o.get('dex')}" in pc:
                         continue
                     u = used.get(o.get("name"))
-                    u_avg = _mmss(u["time_sum"] / u["runs"]) if u and u.get("runs") else ""
-                    pc[f"dex_{o.get('dex')}"] = (f"{o.get('name')} (shown stats hp {o.get('hp')} atk {o.get('atk')} spd {o.get('spd')}, "
-                                                f"stars {o.get('rarity')}; my runs with it: {u['runs'] if u else 0}"
-                                                f"{', avg ' + u_avg + ', best ' + _mmss(u['best']) if u and u.get('runs') else ''})")
-                qs["partner"] = {"type": "choice", "instructions": "Which partner should I play next run to survive longest toward 31:00 (or to test my partner question if I chose one)? Judge from shown stats and my average/best survival records.", "criteria": pc}
-            state = {"goal": "clear 31:00; I learn the game like a player - by asking questions and testing them",
-                     "my_beliefs": self.top_beliefs(8), "recent_runs": self.engine.history_table(6),
-                     "last_diary": [d["text"] for d in self.data["diary"][-3:]]}
-            res = jev(state, qs, 6.0)
+                    fields = {
+                        "name": o.get("name"), "hp": o.get("hp"), "atk": o.get("atk"),
+                        "spd": o.get("spd"), "rarity": o.get("rarity"),
+                        "runs": u["runs"] if u else 0,
+                    }
+                    if u and u.get("runs"):
+                        fields["avg"] = _mmss(u["time_sum"] / u["runs"])
+                        fields["best"] = _mmss(u["best"])
+                        pc[f"dex_{o.get('dex')}"] = pt["other_with_runs"].format(**fields)
+                    else:
+                        pc[f"dex_{o.get('dex')}"] = pt["other_without_runs"].format(**fields)
+                partner_spec = self.engine.harness.get("tool_guidance.decisions.plan_next.partner")
+                qs["partner"] = {"type": partner_spec["type"], "instructions": partner_spec["instructions"], "criteria": pc}
+            mem = self.engine.harness.get("memory.decisions.plan_next")
+            state = {"goal": self.engine.decision_goal("plan_next"),
+                     "my_beliefs": self.top_beliefs(int(mem["beliefs"])),
+                     "recent_runs": self.engine.history_table(int(mem["recent_runs"])),
+                     "last_diary": [d["text"] for d in self.data["diary"][-int(mem["last_diary"]):]]}
+            res = jev(state, qs, self.engine.jev_timeout("plan_next"))
             if res and "answers" in res:
                 a = res["answers"]
                 sample = self.engine._sample
