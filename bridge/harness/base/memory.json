@@ -159,6 +159,20 @@
           "k": 3
         }
       }
+    },
+    "propose_edit": {
+      "lessons": 8,
+      "trajectory_chars": 12000,
+      "inject": {
+        "harness_lessons": {
+          "source": "harness_library",
+          "k": 8
+        },
+        "trajectory": {
+          "source": "trajectory",
+          "chars": 12000
+        }
+      }
     }
   }
 }

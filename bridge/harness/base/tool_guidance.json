@@ -232,6 +232,18 @@
           "other_without_runs": "{name} (shown stats hp {hp} atk {atk} spd {spd}, stars {rarity}; my runs with it: {runs})"
         }
       }
+    },
+    "propose_edit": {
+      "state_goal": "survive longer toward 31:00 by improving my own harness (what I remember, how long I wait for answers, which shortcuts I use), one change at a time",
+      "edit": {
+        "type": "choice",
+        "instructions": "My last run: {summary}. Pick the ONE change to my own harness to try in the next run. Judge from the trajectory of that run, my record with each change, and the lessons my harness library has collected so far.",
+        "criteria_templates": {
+          "option": "{desc} | my record with this change: {record}",
+          "record": "tried {tried}x: helped {helped}, hurt {hurt}, avg survival change {avg_delta:+.0f}s",
+          "never": "never tried"
+        }
+      }
     }
   }
 }
