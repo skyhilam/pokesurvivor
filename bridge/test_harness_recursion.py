@@ -10,7 +10,9 @@ the library round-trips through library.json; knobs, play style and build are
 pinned while a candidate is probed; the deterministic fallback runs when Jev is
 unavailable; duplicate runs are ignored; trajectories render and truncate; the
 bridge exposes harness_id, GET /harness and GET /harness/library, and
-JEV_HARNESS_RECURSION=0 leaves the PR1 behaviour untouched.
+JEV_HARNESS_RECURSION=0 leaves the PR1 behaviour untouched. lessons:off really
+stops injecting harness lessons, and after a probe pin the response, journal
+and JOURNAL.md agree.
 """
 from __future__ import annotations
 
@@ -309,6 +311,75 @@ def test_pinned_while_probing() -> None:
           and s3["source"] != "harness_probe" and eng.policy_pin is None, f"{out['reason']} / {s3['source']}")
 
 
+def test_lessons_off_sends_none() -> None:
+    jev = FakeJev(["memory.inject:propose_edit.lessons:off"])
+    d, eng, rec = make(jev)
+    ids = [e.id for e, _ in rec.candidate_edits(BASE_ID)]
+    check("grammar can turn propose_edit lessons off", "memory.inject:propose_edit.lessons:off" in ids)
+    play(eng, rec, 0, 100)   # base run, Jev picks the off candidate
+    play(eng, rec, 1, 160)   # longer survival -> adopted as h0001
+    play(eng, rec, 2, 150)   # baseline on h0001
+    play(eng, rec, 3, 155)   # retest, then a new candidate is proposed from h0001
+    check("lessons:off is the adopted harness", rec.lib["current"] == "h0001"
+          and rec.load_tree("h0001").get("memory.decisions.propose_edit.lessons") == 0)
+    check("library already holds a lesson, so a stale default would inject one", bool(rec.lib["lessons"]), str(list(rec.lib["lessons"])))
+    edit_calls = [c for c in jev.calls if "edit" in c[1]]
+    check("proposing from the lessons:off harness sends no lessons", edit_calls[-1][0]["harness_lessons"] == [], str(edit_calls[-1][0]["harness_lessons"])[:200])
+    cap = rec.load_tree(BASE_ID).get("memory.decisions.propose_edit.lessons")
+    first = edit_calls[0][0]["harness_lessons"]
+    check("base propose sends a list capped by memory.json", cap == 8 and isinstance(first, list) and len(first) <= cap, f"cap={cap} n={len(first) if isinstance(first, list) else first}")
+
+
+def test_pin_syncs_response_and_journal_md() -> None:
+    d, eng, rec = make(FakeJev())
+    s = eng.start_run({"client_run_id": "r0", "partner": "Dragonite"})
+    rec.on_run_start(s["run_id"])
+    trial = json.loads(json.dumps(eng.kb["pending"][s["run_id"]]))
+    r = run_rec(s["run_id"], 100)
+    res = eng.end_run(r)
+    ref_stance = trial["plan"]["stance"]
+    ref_build = trial["plan"]["build_text"]
+    decoy_stance = next(k for k in STANCES if k != ref_stance)
+    eng.journal.data["next_plan"] = {
+        **eng.journal.data["next_plan"],
+        "stance": decoy_stance,
+        "stance_label": STANCES[decoy_stance]["label"],
+        "build_id": "decoy_build",
+        "build_text": "DECOY BUILD TEXT",
+    }
+    eng.journal.save()
+    eng.journal.write_markdown()
+    res["next_plan"] = Journal.brief(eng.journal.data["next_plan"])
+    out = rec.after_run(r, trial=trial, result=res)
+    check("probe pins the next run", out["pinned"] is True, str(out.get("reason")))
+    saved = json.loads((d / "journal.json").read_text(encoding="utf-8"))["next_plan"]
+    plan = eng.journal.data["next_plan"]
+    check("response, journal and journal.json share the parent's stance and build",
+          res["next_plan"]["stance"] == ref_stance and res["next_plan"]["build_text"] == ref_build
+          and plan["stance"] == ref_stance and plan["build_text"] == ref_build
+          and saved["stance"] == ref_stance and saved["build_text"] == ref_build,
+          f"resp={res['next_plan'].get('stance')}/{res['next_plan'].get('build_text')} journal={plan.get('stance')}/{plan.get('build_text')}")
+    md = (d / "JOURNAL.md").read_text(encoding="utf-8")
+    decoy_line = f"- 🎮 打法：{STANCES[decoy_stance]['label']}"
+    check("JOURNAL.md shows the pinned plan and drops the decoy",
+          f"- 🎮 打法：{STANCES[ref_stance]['label']}" in md and f"- 🃏 Build：{ref_build}" in md
+          and "DECOY BUILD TEXT" not in md and decoy_line not in md)
+
+    s2 = eng.start_run({"client_run_id": "r1", "partner": "Dragonite"})
+    rec.on_run_start(s2["run_id"])
+    r2 = run_rec(s2["run_id"], 160)
+    res2 = eng.end_run(r2)
+    out2 = rec.after_run(r2, result=res2)
+    plan2 = eng.journal.data["next_plan"]
+    check("after the probe the pin lifts and the response matches the journal",
+          not out2["pinned"] and res2["next_plan"]["stance"] == plan2["stance"]
+          and res2["next_plan"]["build_text"] == plan2["build_text"],
+          f"pinned={out2.get('pinned')} resp={res2.get('next_plan')}")
+    md2 = (d / "JOURNAL.md").read_text(encoding="utf-8")
+    check("JOURNAL.md matches the journal after the pin lifts",
+          f"- 🎮 打法：{plan2.get('stance_label')}" in md2 and f"- 🃏 Build：{plan2.get('build_text')}" in md2)
+
+
 # ---------------------------------------------------------------- 5. fallback without Jev
 def test_fallback_without_jev() -> None:
     d, eng, rec = make(None)
@@ -435,7 +506,9 @@ print("RESULT " + json.dumps({"enabled": enabled, "start_harness": s.get("harnes
                               "get_harness": h[0], "harness_body": h[1], "lib_status": lib[0], "lib_keys": sorted(lib[1]),
                               "health_harness": health[1].get("harness"),
                               "assignment": (jb.RECURSION.lib.get("assignments") or {}).get("b1"),
-                              "fingerprint": jb.ENGINE.harness.fingerprint()}))
+                              "fingerprint": jb.ENGINE.harness.fingerprint(),
+                              "np_resp": e1.get("next_plan"),
+                              "np_journal": (jb.ENGINE.journal.brief(jb.ENGINE.journal.data["next_plan"]) if jb.ENGINE.journal else None)}))
 '''
 
 
@@ -462,6 +535,8 @@ def test_bridge_integration() -> None:
           bool(on) and on["end1_status"] == "learned" and on["end1"]["status"] == "recorded" and str(on["end1"]["next"]).startswith("c")
           and on["fingerprint"] != on["assignment"]["fingerprint"], str(on.get("end1")))
     check("bridge: duplicate run is refused before after_run", bool(on) and on["end2_status"] == "duplicate" and on["end2_harness"] is None)
+    if on.get("np_journal") is not None:
+        check("bridge: /run/end next_plan matches the journal after the pin", on.get("np_resp") == on.get("np_journal"), str(on.get("np_resp"))[:300])
     check("bridge: GET /harness and /harness/library", bool(on) and on["get_harness"] == 200 and on["harness_body"]["current"]["id"] == BASE_ID
           and on["harness_body"]["next"] == on["end1"]["next"] and on["lib_status"] == 200
           and {"harnesses", "candidates", "lessons", "assignments"} <= set(on["lib_keys"]) and on["health_harness"]["enabled"] is True)
@@ -479,6 +554,8 @@ def main() -> None:
     test_samples_wait()
     test_library_roundtrip()
     test_pinned_while_probing()
+    test_lessons_off_sends_none()
+    test_pin_syncs_response_and_journal_md()
     test_fallback_without_jev()
     test_duplicate_ignored()
     test_trajectory()

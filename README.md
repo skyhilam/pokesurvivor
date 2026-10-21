@@ -266,7 +266,7 @@ flowchart LR
 1. 由現行樹生成適用嘅改動。通用類：記憶條數 ±2（範圍 1–20）、某個記憶欄注入開關、某個 Jev timeout ×0.75 或 ×1.5（夾在 1–20 秒）、guardrails 注入開關。決策類：某一條升級選卡捷徑開關、某個 fallback 權重 ±25%。無作用嘅改動唔會列出。
 2. 每個改動套落樹之後都要過 `validate_tree`。失敗嘅唔會俾 Jev 揀。
 3. 一輪最多呈 12 個選項，通用類同決策類各佔一半，優先未喺本輪試過、教訓庫試得少、而且庫冇反對（`hurt` 多過 `helped`）嘅項。
-4. Jev 收到 `type=choice`。`criteria` 係改動說明加教訓庫紀錄；`state` 有上一局摘要、軌跡、現行 harness、教訓。
+4. Jev 收到 `type=choice`。`criteria` 係改動說明加教訓庫紀錄；`state` 有上一局摘要、軌跡、現行 harness。`harness_lessons` 跟 `memory.decisions.propose_edit.lessons`：未設定先當 8 條，設咗 0 就係空陣列。
 5. Jev 唔可用、呼叫出錯、或者揀中嘅 id 唔喺選項入面：fallback 揀「教訓庫冇反對、試過最少」嗰個；全部都被反對就揀試過最少嗰個。次序固定。
 6. 候選以暫存目錄再 rename，寫入 `logs/harness/candidates/cNNNN/`。
 
@@ -274,7 +274,7 @@ flowchart LR
 
 1. `activate` 用 `LearningEngine.reload_harness` 載入候選目錄。
 2. `POST /run/start` 記低 `run_id` → `harness_id` + fingerprint，回應多一個 `harness_id`。
-3. 試緊候選時：`policy_pin` 鎖定走位參數，日記 `next_plan` 沿用父 harness 最近一局嘅打法、`build_id` 同 policy。呢局唔開新參數實驗。
+3. 試緊候選時：`policy_pin` 鎖定走位參數，日記 `next_plan` 沿用父 harness 最近一局嘅打法、`build_id` 同 policy。`/run/end` 回應入面嘅 `next_plan` 同 `JOURNAL.md` 會改成同一個鎖定計劃。呢局唔開新參數實驗。
 4. 樣本未夠（見 `HARNESS_SAMPLES`）就繼續 Probe 同一個候選。現行 harness 未有基線局之前，唔會 Propose。
 
 **Compose**（湊夠一輪先比較）：

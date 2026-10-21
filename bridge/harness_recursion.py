@@ -571,6 +571,9 @@ class HarnessRecursion:
         self._apply_pin(next_id)
         self.save()
         self.write_markdown()
+        journal = getattr(self.engine, "journal", None)
+        if isinstance(result, dict) and "next_plan" in result and journal is not None and isinstance(journal.data.get("next_plan"), dict):
+            result["next_plan"] = journal.brief(journal.data["next_plan"])
         return {"status": "recorded", "run_id": run_id, "harness_used": hid, "next": next_id, "reason": reason,
                 "composed": composed, "pinned": self._is_candidate(next_id)}
 
@@ -587,6 +590,7 @@ class HarnessRecursion:
             if journal is not None and isinstance(journal.data.get("next_plan"), dict):
                 if journal.data["next_plan"].pop("harness_probe", None) is not None:
                     journal.save()
+                    journal.write_markdown()
             return
         cand = self.lib["candidates"][next_id]
         parent = self.record(cand.get("parent") or self.lib["current"]) or {}
@@ -618,6 +622,7 @@ class HarnessRecursion:
         plan["harness_probe"] = next_id
         journal.data["next_plan"] = plan
         journal.save()
+        journal.write_markdown()
 
     # ------------------------------------------------------------ schedule
     def _schedule_locked(self, rec: dict[str, Any], run_id: str) -> tuple[str, str]:
@@ -733,13 +738,15 @@ class HarnessRecursion:
         except (KeyError, IndexError):
             pass
         parent = self.record(parent_id) or {}
+        lessons_k = harness.get("memory.decisions.propose_edit.lessons")
+        lessons_k = 8 if lessons_k is None else max(0, int(lessons_k))
         state = {
             "goal": harness.get("tool_guidance.decisions.propose_edit.state_goal"),
             "last_run": summary,
             "trajectory": self._trajectory(rec, run_id),
             "harness_now": {"id": parent_id, "edits": parent.get("edits") or [], "runs": len(parent.get("runs") or []),
                             "avg_survival_s": parent.get("avg_survival", 0.0)},
-            "harness_lessons": self.library_lessons(int(harness.get("memory.decisions.propose_edit.lessons") or 8)),
+            "harness_lessons": self.library_lessons(lessons_k) if lessons_k else [],
             "candidates_this_round": [self.lib["candidates"][c]["edits"] for c in self.lib["round"]["candidates"] if c in self.lib["candidates"]],
         }
         questions = {"edit": {"type": str(spec.get("type") or "choice"), "instructions": instructions, "criteria": criteria}}
